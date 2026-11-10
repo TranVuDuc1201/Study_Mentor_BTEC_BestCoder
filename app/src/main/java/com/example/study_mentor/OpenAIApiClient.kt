@@ -32,7 +32,8 @@ object OpenAIApiClient {
     fun askQuestion(
         prompt: String,
         imageBase64: String? = null,
-        systemPrompt: String = "You are a concise study assistant. Answer in 1 to 2 sentences maximum. Do NOT use Markdown formatting (no asterisks or bold text). Emojis are allowed."
+        systemPrompt: String = "You are a concise study assistant. Answer in 1 to 2 sentences maximum. Do NOT use Markdown formatting (no asterisks or bold text). Emojis are allowed.",
+        maxTokens: Int = 2500
     ): Flow<String> = flow {
         val url = URL(ENDPOINT_URL)
         val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -73,7 +74,7 @@ object OpenAIApiClient {
             val rootJson = JSONObject().apply {
                 put("model", "vgpt/gpt-6.1-sol")
                 put("stream", true)
-                put("max_tokens", 100)
+                put("max_tokens", maxTokens)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")

@@ -1,7 +1,12 @@
 package com.example.study_mentor.data
 
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.tasks.await
 
 /**
  * Repository interface defining quiz retrieval and management.
@@ -17,13 +22,25 @@ interface QuizRepository {
      * Fetches an individual quiz by its unique identifier.
      */
     suspend fun getQuizById(quizId: String): Quiz?
+
+    /**
+     * Saves a custom AI-generated quiz to the "CustomQuizzes" collection in Firestore.
+     */
+    suspend fun saveCustomQuiz(quiz: Quiz)
+
+    /**
+     * Fetches real-time updates of custom quizzes created by the specified user (where creatorId == userId).
+     */
+    fun getUserCustomQuizzes(userId: String): Flow<List<Quiz>>
 }
 
 /**
  * Initial Repository implementation with seed quiz data.
  * Ready for future extension with Firestore collections for educator/teacher submissions.
  */
-class QuizRepositoryImpl : QuizRepository {
+class QuizRepositoryImpl(
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+) : QuizRepository {
 
     private val seedQuizzes = listOf(
         Quiz(
@@ -119,6 +136,92 @@ class QuizRepositoryImpl : QuizRepository {
     }
 
     override suspend fun getQuizById(quizId: String): Quiz? {
-        return seedQuizzes.find { it.id == quizId }
+        val seed = seedQuizzes.find { it.id == quizId }
+        if (seed != null) return seed
+
+        return try {
+            val doc = firestore.collection("CustomQuizzes").document(quizId).get().await()
+            if (doc.exists()) documentToQuiz(doc) else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override suspend fun saveCustomQuiz(quiz: Quiz) {
+        val docRef = if (quiz.id.isNotBlank()) {
+            firestore.collection("CustomQuizzes").document(quiz.id)
+        } else {
+            firestore.collection("CustomQuizzes").document()
+        }
+        val toSave = if (quiz.id.isBlank()) quiz.copy(id = docRef.id) else quiz
+        docRef.set(toSave).await()
+    }
+
+    override fun getUserCustomQuizzes(userId: String): Flow<List<Quiz>> = callbackFlow {
+        if (userId.isBlank()) {
+            trySend(emptyList())
+            close()
+            return@callbackFlow
+        }
+
+        val query = firestore.collection("CustomQuizzes")
+            .whereEqualTo("creatorId", userId)
+
+        val registration = query.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                close(error)
+                return@addSnapshotListener
+            }
+            val quizzes = snapshot?.documents?.mapNotNull { doc ->
+                documentToQuiz(doc)
+            } ?: emptyList()
+            trySend(quizzes)
+        }
+
+        awaitClose { registration.remove() }
+    }
+
+    private fun documentToQuiz(doc: DocumentSnapshot): Quiz? {
+        return try {
+            doc.toObject(Quiz::class.java)?.copy(id = doc.id)
+        } catch (e: Exception) {
+            val data = doc.data ?: return null
+            val id = doc.id
+            val title = data["title"] as? String ?: ""
+            val description = data["description"] as? String ?: ""
+            val maxXp = (data["maxXp"] as? Number)?.toInt() ?: 100
+            val isAiGenerated = data["isAiGenerated"] as? Boolean ?: true
+            val creatorId = data["creatorId"] as? String
+            val questionsRaw = data["questions"] as? List<*> ?: emptyList<Any>()
+            val questions = questionsRaw.mapNotNull { item ->
+                val qMap = item as? Map<*, *> ?: return@mapNotNull null
+                val qId = qMap["id"] as? String ?: ""
+                val qText = qMap["text"] as? String ?: ""
+                val qTypeStr = qMap["type"] as? String ?: "MULTIPLE_CHOICE"
+                val qType = if (qTypeStr.contains("SHORT", ignoreCase = true)) {
+                    QuestionType.SHORT_ANSWER
+                } else {
+                    QuestionType.MULTIPLE_CHOICE
+                }
+                val qOptions = (qMap["options"] as? List<*>)?.mapNotNull { it as? String }
+                val qCorrectAnswer = qMap["correctAnswer"] as? String ?: ""
+                Question(
+                    id = qId,
+                    text = qText,
+                    type = qType,
+                    options = qOptions,
+                    correctAnswer = qCorrectAnswer
+                )
+            }
+            Quiz(
+                id = id,
+                title = title,
+                description = description,
+                maxXp = maxXp,
+                questions = questions,
+                isAiGenerated = isAiGenerated,
+                creatorId = creatorId
+            )
+        }
     }
 }

@@ -42,7 +42,9 @@ data class Quiz(
     val title: String = "",
     val description: String = "",
     val maxXp: Int = 100,
-    val questions: List<Question> = emptyList()
+    val questions: List<Question> = emptyList(),
+    val isAiGenerated: Boolean = false,
+    val creatorId: String? = null
 )
 
 /**

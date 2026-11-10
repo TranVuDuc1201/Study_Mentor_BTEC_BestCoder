@@ -16,6 +16,9 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -26,9 +29,14 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -112,6 +120,9 @@ fun MainScreen(
                 PracticeScreen(
                     onNavigateToQuiz = { quizId ->
                         navController.navigate("quiz_taking/$quizId")
+                    },
+                    onNavigateToSignIn = {
+                        navController.navigate("login")
                     },
                     viewModel = practiceViewModel
                 )
@@ -285,6 +296,32 @@ fun BottomBarWithFab(
     )
 
     val isAskAiRoute = currentRoute == "ask_ai"
+    var showSoftAuthDialog by remember { mutableStateOf(false) }
+
+    val handleAskAiClick: () -> Unit = {
+        if (isAskAiRoute) {
+            // Contextual Enter/Send trigger when already on Ask AI
+            if (!chatUiState.isLoading) {
+                if (chatUiState.messages.isEmpty() && chatUiState.selectedImageUri == null) {
+                    // Live viewfinder mode: trigger one-tap capture & solve!
+                    chatViewModel.triggerCameraCapture()
+                } else {
+                    // In active conversation or already selected image: send prompt!
+                    chatViewModel.sendMessage()
+                }
+            }
+        } else {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            if (currentUser != null) {
+                navController.navigate("ask_ai") {
+                    popUpTo(navController.graph.startDestinationId)
+                    launchSingleTop = true
+                }
+            } else {
+                showSoftAuthDialog = true
+            }
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxWidth()
@@ -380,24 +417,7 @@ fun BottomBarWithFab(
                     ) 
                 },
                 selected = isAskAiRoute,
-                onClick = {
-                    if (isAskAiRoute) {
-                        if (!chatUiState.isLoading) {
-                            if (chatUiState.messages.isEmpty() && chatUiState.selectedImageUri == null) {
-                                // Live viewfinder mode: trigger one-tap capture & solve!
-                                chatViewModel.triggerCameraCapture()
-                            } else {
-                                // In active conversation or already selected image: send prompt!
-                                chatViewModel.sendMessage()
-                            }
-                        }
-                    } else {
-                        navController.navigate("ask_ai") {
-                            popUpTo(navController.graph.startDestinationId)
-                            launchSingleTop = true
-                        }
-                    }
-                },
+                onClick = handleAskAiClick,
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -498,25 +518,7 @@ fun BottomBarWithFab(
             }
 
             FloatingActionButton(
-                onClick = {
-                    if (isAskAiRoute) {
-                        // Contextual Enter/Send trigger when already on Ask AI
-                        if (!chatUiState.isLoading) {
-                            if (chatUiState.messages.isEmpty() && chatUiState.selectedImageUri == null) {
-                                // Live viewfinder mode: trigger one-tap capture & solve!
-                                chatViewModel.triggerCameraCapture()
-                            } else {
-                                // In active conversation or already selected image: send prompt!
-                                chatViewModel.sendMessage()
-                            }
-                        }
-                    } else {
-                        navController.navigate("ask_ai") {
-                            popUpTo(navController.graph.startDestinationId)
-                            launchSingleTop = true
-                        }
-                    }
-                },
+                onClick = handleAskAiClick,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 shape = CircleShape,
@@ -546,6 +548,53 @@ fun BottomBarWithFab(
                 }
             }
         }
+    }
+
+    // Soft Auth Nudge AlertDialog for Ask AI
+    if (showSoftAuthDialog) {
+        AlertDialog(
+            onDismissRequest = { showSoftAuthDialog = false },
+            title = {
+                Text(
+                    text = "Save Your Progress!",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    text = "Log in to save your AI chat history, track your study streaks, and earn XP.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSoftAuthDialog = false
+                        navController.navigate("login")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Text("Log In", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSoftAuthDialog = false
+                        navController.navigate("ask_ai") {
+                            popUpTo(navController.graph.startDestinationId)
+                            launchSingleTop = true
+                        }
+                    }
+                ) {
+                    Text("Continue as Guest")
+                }
+            },
+            containerColor = Color.White,
+            shape = MaterialTheme.shapes.extraLarge
+        )
     }
 }
 
