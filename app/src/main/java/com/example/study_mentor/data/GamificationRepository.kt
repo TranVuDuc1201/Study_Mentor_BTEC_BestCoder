@@ -82,10 +82,11 @@ class GamificationRepository(
 
             if (snapshot != null && snapshot.exists()) {
                 val totalXp = snapshot.getLong(FIELD_TOTAL_XP)?.toInt() ?: 0
-                trySend(UserStats(totalXp = maxOf(0, totalXp)))
+                val streakDays = snapshot.getLong("streakDays")?.toInt() ?: 5
+                trySend(UserStats(totalXp = maxOf(0, totalXp), streakDays = streakDays))
             } else {
                 // Document not created yet -> Default to Level 1 Novice with 0 XP
-                trySend(UserStats(totalXp = 0))
+                trySend(UserStats(totalXp = 0, streakDays = 5))
             }
         }
 

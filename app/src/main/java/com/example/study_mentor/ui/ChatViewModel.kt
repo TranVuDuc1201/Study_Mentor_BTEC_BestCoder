@@ -39,6 +39,8 @@ typealias ChatMessage = com.example.study_mentor.data.ChatMessage
  * @param selectedImageBase64 Compressed Base64 representation of the selected image.
  * @param currentSessionId    ID of the active Firestore chat session, or null if new.
  * @param inputText           Current user query draft in the chat input field.
+ * @param selectedSubject     Currently active subject for dynamic prompt injection.
+ * @param selectedFormat      Currently active output format for dynamic prompt injection.
  */
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -47,7 +49,9 @@ data class ChatUiState(
     val selectedImageUri: Uri? = null,
     val selectedImageBase64: String? = null,
     val currentSessionId: String? = null,
-    val inputText: String = ""
+    val inputText: String = "",
+    val selectedSubject: String = ChatViewModel.DEFAULT_SUBJECT,
+    val selectedFormat: String = ChatViewModel.DEFAULT_FORMAT
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -59,6 +63,10 @@ class ChatViewModel(
 ) : ViewModel() {
 
     companion object {
+        val SUBJECT_OPTIONS = listOf("Math", "Physics", "Chemistry", "History", "Literature", "General")
+        val FORMAT_OPTIONS = listOf("Step-by-step", "Explain Concept", "Check my work", "Summary")
+        const val DEFAULT_SUBJECT = "Math"
+        const val DEFAULT_FORMAT = "Step-by-step"
         const val DEFAULT_IMAGE_PROMPT = "Solve this math problem step-by-step and explain the concepts."
     }
 
@@ -83,6 +91,47 @@ class ChatViewModel(
      */
     fun onInputTextChanged(text: String) {
         _uiState.update { it.copy(inputText = text) }
+    }
+
+    /**
+     * Updates the active subject for dynamic prompt injection.
+     */
+    fun onSubjectSelected(subject: String) {
+        _uiState.update { it.copy(selectedSubject = subject) }
+    }
+
+    /**
+     * Updates the active output format for dynamic prompt injection.
+     */
+    fun onFormatSelected(format: String) {
+        _uiState.update { it.copy(selectedFormat = format) }
+    }
+
+    /**
+     * Dynamically builds the final prompt based on the selected Subject and Output Format.
+     * Implements prompt engineering injection:
+     * - Role anchor: "Act as an expert in $selectedSubject. "
+     * - If the user typed a specific question, it uses their query.
+     * - Otherwise ("Lazy User" flow), it generates the format instruction.
+     */
+    fun buildEffectivePrompt(
+        userInput: String,
+        subject: String = _uiState.value.selectedSubject,
+        format: String = _uiState.value.selectedFormat,
+        hasImage: Boolean = true
+    ): String {
+        val trimmed = userInput.trim()
+        if (trimmed.startsWith("Act as an expert in")) {
+            return trimmed
+        }
+        val instruction = if (trimmed.isNotBlank()) {
+            trimmed
+        } else if (hasImage) {
+            "Analyze the attached image and provide a $format."
+        } else {
+            "Provide a $format explanation."
+        }
+        return "Act as an expert in $subject. $instruction"
     }
 
     /**
@@ -208,18 +257,19 @@ class ChatViewModel(
 
     /**
      * One-tap image dispatch: receives a captured/cropped image URI and user prompt (or default prompt),
-     * immediately displays the user message bubble in the UI, compresses the image on IO, and streams
-     * the AI response.
+     * dynamically builds the prompt with expert subject and format injection, displays the user message bubble,
+     * compresses the image on IO, and streams the AI response.
      */
     fun sendImagePrompt(context: Context, imageUri: Uri, prompt: String? = null) {
         if (isStreaming) return
 
         val trimmedPrompt = (prompt ?: _uiState.value.inputText).trim()
-        val effectivePrompt = if (trimmedPrompt.isBlank()) {
-            DEFAULT_IMAGE_PROMPT
-        } else {
-            trimmedPrompt
-        }
+        val effectivePrompt = buildEffectivePrompt(
+            userInput = trimmedPrompt,
+            subject = _uiState.value.selectedSubject,
+            format = _uiState.value.selectedFormat,
+            hasImage = true
+        )
 
         // Set the selected image URI and clear input text draft
         _uiState.update {
@@ -266,7 +316,7 @@ class ChatViewModel(
      *
      * @param prompt The question or instruction typed by the user. If null, the active
      *               [ChatUiState.inputText] is used. If blank and an image is attached
-     *               ("Lazy User" flow), [DEFAULT_IMAGE_PROMPT] is automatically assigned.
+     *               ("Lazy User" flow), dynamically injects the selected Subject and Format prompt.
      */
     fun sendMessage(prompt: String? = null) {
         val rawPrompt = prompt ?: _uiState.value.inputText
@@ -274,13 +324,13 @@ class ChatViewModel(
         val base64ToSend = _uiState.value.selectedImageBase64
         val hasImage = base64ToSend != null || _uiState.value.selectedImageUri != null
 
-        // "Lazy User" logic: If an image is selected/captured but prompt is empty,
-        // automatically assign the default math solving prompt.
-        val effectivePrompt = if (trimmedPrompt.isBlank() && hasImage) {
-            DEFAULT_IMAGE_PROMPT
-        } else {
-            trimmedPrompt
-        }
+        // Dynamic Prompt Injection: builds prompt based on selected Subject and Format
+        val effectivePrompt = buildEffectivePrompt(
+            userInput = trimmedPrompt,
+            subject = _uiState.value.selectedSubject,
+            format = _uiState.value.selectedFormat,
+            hasImage = hasImage
+        )
 
         if ((effectivePrompt.isBlank() && base64ToSend == null) || isStreaming) return
 
@@ -288,7 +338,7 @@ class ChatViewModel(
         _uiState.update { it.copy(inputText = "") }
         clearSelectedImage()
 
-        // Optional UI tweak: Indicate in chat history that an image was attached
+        // Indicate in chat history that an image was attached
         val bubbleText = if (base64ToSend != null) {
             if (effectivePrompt.isNotBlank()) "[Image attached]\n$effectivePrompt" else "[Image attached]"
         } else {

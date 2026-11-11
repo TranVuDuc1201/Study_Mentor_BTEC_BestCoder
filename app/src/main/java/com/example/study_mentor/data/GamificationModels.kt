@@ -9,7 +9,8 @@ package com.example.study_mentor.data
  * @param totalXp Cumulative experience points earned by the user across study activities.
  */
 data class UserStats(
-    val totalXp: Int = 0
+    val totalXp: Int = 0,
+    val streakDays: Int = 5
 )
 
 /**

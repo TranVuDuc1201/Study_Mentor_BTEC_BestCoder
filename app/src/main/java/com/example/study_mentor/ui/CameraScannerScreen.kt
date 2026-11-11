@@ -23,11 +23,18 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -46,9 +53,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -57,6 +64,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FlashOff
@@ -112,6 +120,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.study_mentor.ui.theme.BackgroundOffWhite
 import com.example.study_mentor.ui.theme.PrimaryBlue
+import com.example.study_mentor.ui.theme.SoftOrangePrimaryLight
 import java.io.File
 import java.io.FileOutputStream
 
@@ -656,14 +665,8 @@ fun CameraScannerScreen(
                 previewHeight = totalHeight.toInt(),
                 onSuccess = { croppedUri ->
                     isCapturing = false
-                    // "Lazy User" prompt logic: if text input is blank, assign default prompt string
-                    val promptToSend = if (uiState.inputText.isNotBlank()) {
-                        uiState.inputText.trim()
-                    } else {
-                        "Solve this math problem step-by-step and explain the concepts."
-                    }
-                    // Immediately send cropped image and prompt to AI (no second tap needed)
-                    chatViewModel.sendImagePrompt(context, croppedUri, promptToSend)
+                    // Dynamic prompt building in ViewModel using selectedSubject and selectedFormat
+                    chatViewModel.sendImagePrompt(context, croppedUri)
                 },
                 onError = { exc ->
                     isCapturing = false
@@ -755,7 +758,8 @@ fun CameraScannerScreen(
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = Color.White
+            color = Color(0xFF1E1E22),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
         ) {
             Column(
                 modifier = Modifier
@@ -788,7 +792,7 @@ fun CameraScannerScreen(
                 if (uiState.errorMessage != null) {
                     Text(
                         text = uiState.errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
+                        color = Color(0xFFFFB4AB),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
@@ -800,7 +804,7 @@ fun CameraScannerScreen(
                         text = "OR TYPE YOUR QUESTION",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Gray
+                        color = Color(0xFFA1A1AA)
                     )
                 }
 
@@ -820,7 +824,7 @@ fun CameraScannerScreen(
                                 modifier = Modifier
                                     .size(70.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color.LightGray, RoundedCornerShape(10.dp))
+                                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
                             )
 
                             IconButton(
@@ -847,7 +851,7 @@ fun CameraScannerScreen(
                 OutlinedTextField(
                     value = uiState.inputText,
                     onValueChange = { chatViewModel.onInputTextChanged(it) },
-                    placeholder = { Text("Ask something...") },
+                    placeholder = { Text("Ask something...", color = Color(0xFFA1A1AA)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -861,10 +865,13 @@ fun CameraScannerScreen(
                         }
                     ),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryBlue,
-                        unfocusedBorderColor = Color.LightGray,
-                        focusedContainerColor = BackgroundOffWhite,
-                        unfocusedContainerColor = BackgroundOffWhite
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = SoftOrangePrimaryLight,
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+                        focusedContainerColor = Color(0xFF28282D),
+                        unfocusedContainerColor = Color(0xFF28282D),
+                        cursorColor = SoftOrangePrimaryLight
                     ),
                     leadingIcon = {
                         Row(
@@ -883,7 +890,7 @@ fun CameraScannerScreen(
                                 Icon(
                                     imageVector = Icons.Default.Add,
                                     contentDescription = "Attach image from gallery",
-                                    tint = PrimaryBlue,
+                                    tint = SoftOrangePrimaryLight,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -903,14 +910,14 @@ fun CameraScannerScreen(
                                 if (isCapturing) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
-                                        color = PrimaryBlue,
+                                        color = SoftOrangePrimaryLight,
                                         strokeWidth = 2.dp
                                     )
                                 } else {
                                     Icon(
                                         imageVector = Icons.Default.PhotoCamera,
                                         contentDescription = "Capture photo and solve",
-                                        tint = PrimaryBlue,
+                                        tint = SoftOrangePrimaryLight,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -932,7 +939,7 @@ fun CameraScannerScreen(
                                 .padding(end = 8.dp)
                                 .size(36.dp)
                                 .background(
-                                    if (isSendActive) PrimaryBlue else Color.LightGray,
+                                    if (isSendActive) SoftOrangePrimaryLight else Color(0xFF3F3F46),
                                     CircleShape
                                 )
                         ) {
@@ -954,51 +961,51 @@ fun CameraScannerScreen(
                     }
                 )
 
-                // ── Action Pills (hidden when a conversation has started) ──
+                // ── Interactive Context Panel (hidden when a conversation has started) ──
                 if (uiState.messages.isEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ActionPill("Solve step-by-step") {
-                            val prompt = if (uiState.inputText.isNotBlank()) {
-                                "Solve step-by-step: ${uiState.inputText}"
-                            } else {
-                                "Solve this math problem step-by-step and explain the concepts."
-                            }
-                            if (hasCameraPermission && uiState.selectedImageUri == null) {
-                                chatViewModel.onInputTextChanged(prompt)
-                                performCaptureAndSend()
-                            } else {
-                                chatViewModel.sendMessage(prompt)
-                            }
-                        }
-                        ActionPill("Explain concept") {
-                            val prompt = if (uiState.inputText.isNotBlank()) {
-                                "Explain this concept simply: ${uiState.inputText}"
-                            } else {
-                                "Explain this concept simply"
-                            }
-                            if (hasCameraPermission && uiState.selectedImageUri == null) {
-                                chatViewModel.onInputTextChanged(prompt)
-                                performCaptureAndSend()
-                            } else {
-                                chatViewModel.sendMessage(prompt)
+                        // Row 1: Subject Selection
+                        Text(
+                            text = "SUBJECT",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFA1A1AA)
+                        )
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(ChatViewModel.SUBJECT_OPTIONS) { subject ->
+                                ContextFilterChip(
+                                    text = subject,
+                                    selected = uiState.selectedSubject == subject,
+                                    onClick = { chatViewModel.onSubjectSelected(subject) }
+                                )
                             }
                         }
-                        ActionPill("Check my work") {
-                            val prompt = if (uiState.inputText.isNotBlank()) {
-                                "Check my work and correct any mistakes: ${uiState.inputText}"
-                            } else {
-                                "Check my work and correct any mistakes"
-                            }
-                            if (hasCameraPermission && uiState.selectedImageUri == null) {
-                                chatViewModel.onInputTextChanged(prompt)
-                                performCaptureAndSend()
-                            } else {
-                                chatViewModel.sendMessage(prompt)
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        // Row 2: Format Selection
+                        Text(
+                            text = "OUTPUT FORMAT",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFA1A1AA)
+                        )
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(ChatViewModel.FORMAT_OPTIONS) { format ->
+                                ContextFilterChip(
+                                    text = format,
+                                    selected = uiState.selectedFormat == format,
+                                    onClick = { chatViewModel.onFormatSelected(format) }
+                                )
                             }
                         }
                     }
@@ -1027,12 +1034,12 @@ fun ChatBubble(message: ChatMessage) {
                 bottomStart = if (isUser) 16.dp else 4.dp,
                 bottomEnd = if (isUser) 4.dp else 16.dp
             ),
-            color = if (isUser) PrimaryBlue else Color(0xFFF1F5F9),
+            color = if (isUser) SoftOrangePrimaryLight else Color(0xFF2C2C32),
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Text(
                 text = message.text,
-                color = if (isUser) Color.White else Color(0xFF1E293B),
+                color = if (isUser) Color.White else Color(0xFFEDE0DB),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
             )
@@ -1051,7 +1058,7 @@ fun AiThinkingBubble() {
     ) {
         Surface(
             shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomEnd = 16.dp, bottomStart = 4.dp),
-            color = Color(0xFFF1F5F9)
+            color = Color(0xFF2C2C32)
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1060,12 +1067,12 @@ fun AiThinkingBubble() {
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(14.dp),
-                    color = PrimaryBlue,
+                    color = SoftOrangePrimaryLight,
                     strokeWidth = 2.dp
                 )
                 Text(
                     text = "AI is thinking...",
-                    color = Color.Gray,
+                    color = Color(0xFFA1A1AA),
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -1073,22 +1080,66 @@ fun AiThinkingBubble() {
     }
 }
 
-// ─── Action Pill Composable ─────────────────────────────────────────────────
+// ─── Interactive FilterChip Composable ──────────────────────────────────────
 
+/**
+ * Modern interactive FilterChip with smooth color transitions, animated checkmark,
+ * and high legibility against the camera scanner screen's dark theme.
+ */
 @Composable
-fun ActionPill(text: String, onClick: () -> Unit = {}) {
+fun ContextFilterChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = if (selected) SoftOrangePrimaryLight else Color.White.copy(alpha = 0.08f),
+        animationSpec = tween(durationMillis = 200),
+        label = "chipBgColor"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) Color.White else Color(0xFFE2E8F0),
+        animationSpec = tween(durationMillis = 200),
+        label = "chipContentColor"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) SoftOrangePrimaryLight else Color.White.copy(alpha = 0.18f),
+        animationSpec = tween(durationMillis = 200),
+        label = "chipBorderColor"
+    )
+
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFFDBEAFE),
-        modifier = Modifier.padding(vertical = 4.dp),
-        onClick = onClick
+        selected = selected,
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = backgroundColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = modifier
     ) {
-        Text(
-            text = text,
-            color = PrimaryBlue,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            AnimatedVisibility(
+                visible = selected,
+                enter = fadeIn() + expandHorizontally(),
+                exit = fadeOut() + shrinkHorizontally()
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = contentColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = text,
+                color = contentColor,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+        }
     }
 }
