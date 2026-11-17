@@ -36,6 +36,9 @@ data class Question(
  * @param description Brief description or curriculum guidance.
  * @param maxXp Maximum experience points awarded for a perfect score.
  * @param questions The list of questions included in this quiz.
+ * @param isAiGenerated Whether the quiz was created dynamically via AI.
+ * @param creatorId ID of the creator or educator who submitted the quiz.
+ * @param showInstantFeedback Whether to reveal correct/incorrect answers immediately or after submission.
  */
 data class Quiz(
     val id: String = "",
@@ -44,7 +47,8 @@ data class Quiz(
     val maxXp: Int = 100,
     val questions: List<Question> = emptyList(),
     val isAiGenerated: Boolean = false,
-    val creatorId: String? = null
+    val creatorId: String? = null,
+    val showInstantFeedback: Boolean = true
 )
 
 /**

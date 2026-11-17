@@ -48,6 +48,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -354,7 +356,7 @@ fun PracticeScreen(
                         showBottomSheet = false
                     }
                 },
-                onGenerate = { topic, count, type, language ->
+                onGenerate = { topic, count, type, language, showInstantFeedback ->
                     coroutineScope.launch {
                         sheetState.hide()
                         showBottomSheet = false
@@ -363,7 +365,8 @@ fun PracticeScreen(
                         topic = topic,
                         count = count,
                         type = type,
-                        language = language
+                        language = language,
+                        showInstantFeedback = showInstantFeedback
                     )
                 }
             )
@@ -545,12 +548,13 @@ fun AiQuizGeneratorCard(
 @Composable
 fun AiQuizBottomSheetContent(
     onDismiss: () -> Unit,
-    onGenerate: (topic: String, count: Int, type: String, language: String) -> Unit
+    onGenerate: (topic: String, count: Int, type: String, language: String, showInstantFeedback: Boolean) -> Unit
 ) {
     var topic by remember { mutableStateOf("") }
     var questionCount by remember { mutableIntStateOf(5) } // 5 or 10
     var questionType by remember { mutableStateOf("MULTIPLE_CHOICE") } // "MULTIPLE_CHOICE" or "SHORT_ANSWER"
     var language by remember { mutableStateOf("English") } // "English" or "Vietnamese"
+    var showInstantFeedback by remember { mutableStateOf(true) }
 
     val topicSuggestions = listOf(
         "History of Vietnam",
@@ -836,13 +840,55 @@ fun AiQuizBottomSheetContent(
             }
         }
 
+        // 5. Instant Feedback Configuration Row
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = BackgroundOffWhite,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text(
+                        text = "Show instant correct/incorrect feedback",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (showInstantFeedback) "Reveal answers right after tapping" else "Keep answers hidden until completion",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                Switch(
+                    checked = showInstantFeedback,
+                    onCheckedChange = { showInstantFeedback = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = PrimaryBlue
+                    )
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
 
-        // 5. Submit "Generate" Button
+        // 6. Submit "Generate" Button
         Button(
             onClick = {
                 if (topic.isNotBlank()) {
-                    onGenerate(topic.trim(), questionCount, questionType, language)
+                    onGenerate(topic.trim(), questionCount, questionType, language, showInstantFeedback)
                 }
             },
             enabled = topic.isNotBlank(),

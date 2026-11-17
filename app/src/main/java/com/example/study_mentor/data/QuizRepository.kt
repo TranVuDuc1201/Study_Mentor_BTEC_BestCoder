@@ -192,6 +192,7 @@ class QuizRepositoryImpl(
             val maxXp = (data["maxXp"] as? Number)?.toInt() ?: 100
             val isAiGenerated = data["isAiGenerated"] as? Boolean ?: true
             val creatorId = data["creatorId"] as? String
+            val showInstantFeedback = data["showInstantFeedback"] as? Boolean ?: true
             val questionsRaw = data["questions"] as? List<*> ?: emptyList<Any>()
             val questions = questionsRaw.mapNotNull { item ->
                 val qMap = item as? Map<*, *> ?: return@mapNotNull null
@@ -220,7 +221,8 @@ class QuizRepositoryImpl(
                 maxXp = maxXp,
                 questions = questions,
                 isAiGenerated = isAiGenerated,
-                creatorId = creatorId
+                creatorId = creatorId,
+                showInstantFeedback = showInstantFeedback
             )
         }
     }

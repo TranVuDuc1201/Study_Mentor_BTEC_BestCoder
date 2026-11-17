@@ -19,20 +19,45 @@ class FirestoreChatRepository(
      * Creates a new chat session document under users/{uid}/chat_sessions/
      * and returns the auto-generated session ID.
      */
-    suspend fun createNewSession(uid: String, title: String): String {
+    suspend fun createNewSession(
+        uid: String,
+        title: String,
+        subject: String? = null,
+        outputFormat: String? = null
+    ): String {
         val sessionDoc = firestore.collection("users")
             .document(uid)
             .collection("chat_sessions")
             .document()
 
         val sessionId = sessionDoc.id
+        val category = subject?.takeIf { it.isNotBlank() } ?: "General"
         val session = ChatSession(
             id = sessionId,
             title = title,
+            category = category,
+            subject = subject,
+            outputFormat = outputFormat,
             createdAt = System.currentTimeMillis()
         )
         sessionDoc.set(session).await()
         return sessionId
+    }
+
+    /**
+     * Updates the preview snippet of the last response for a given session.
+     */
+    suspend fun updateSessionPreview(uid: String, sessionId: String, preview: String) {
+        try {
+            firestore.collection("users")
+                .document(uid)
+                .collection("chat_sessions")
+                .document(sessionId)
+                .update("lastResponsePreview", preview)
+                .await()
+        } catch (e: Exception) {
+            // Ignore if doc doesn't exist
+        }
     }
 
     /**
@@ -76,6 +101,22 @@ class FirestoreChatRepository(
         }
 
         awaitClose { registration.remove() }
+    }
+
+    /**
+     * Deletes a chat session along with all messages under its subcollection.
+     */
+    suspend fun deleteChatSession(uid: String, sessionId: String) {
+        val sessionDocRef = firestore.collection("users")
+            .document(uid)
+            .collection("chat_sessions")
+            .document(sessionId)
+
+        val messagesSnapshot = sessionDocRef.collection("messages").get().await()
+        for (doc in messagesSnapshot.documents) {
+            doc.reference.delete().await()
+        }
+        sessionDocRef.delete().await()
     }
 
     /**

@@ -83,6 +83,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -115,6 +116,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -612,8 +615,24 @@ fun CameraScannerScreen(
     var isTorchOn by remember { mutableStateOf(false) }
     var isCapturing by remember { mutableStateOf(false) }
 
-    // Clear active chat session when pressing the system back button
+    // Requirement 2: Reset context chip selections on exit (screen unmounted or ON_STOP)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                chatViewModel.resetContextFilters()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            chatViewModel.resetContextFilters()
+        }
+    }
+
+    // Clear active chat session & context filters when pressing the system back button
     BackHandler {
+        chatViewModel.resetContextFilters()
         chatViewModel.startNewChat()
         onBackClick()
     }
@@ -717,6 +736,7 @@ fun CameraScannerScreen(
         ) {
             IconButton(
                 onClick = {
+                    chatViewModel.resetContextFilters()
                     chatViewModel.startNewChat()
                     onBackClick()
                 }
@@ -979,10 +999,13 @@ fun CameraScannerScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(ChatViewModel.SUBJECT_OPTIONS) { subject ->
+                                val isSelected = uiState.selectedSubject == subject
                                 ContextFilterChip(
                                     text = subject,
-                                    selected = uiState.selectedSubject == subject,
-                                    onClick = { chatViewModel.onSubjectSelected(subject) }
+                                    selected = isSelected,
+                                    onClick = {
+                                        chatViewModel.onSubjectSelected(if (isSelected) null else subject)
+                                    }
                                 )
                             }
                         }
@@ -1001,10 +1024,13 @@ fun CameraScannerScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(ChatViewModel.FORMAT_OPTIONS) { format ->
+                                val isSelected = uiState.selectedFormat == format
                                 ContextFilterChip(
                                     text = format,
-                                    selected = uiState.selectedFormat == format,
-                                    onClick = { chatViewModel.onFormatSelected(format) }
+                                    selected = isSelected,
+                                    onClick = {
+                                        chatViewModel.onFormatSelected(if (isSelected) null else format)
+                                    }
                                 )
                             }
                         }

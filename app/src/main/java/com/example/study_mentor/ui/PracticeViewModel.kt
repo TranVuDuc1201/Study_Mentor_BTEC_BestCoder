@@ -260,6 +260,7 @@ class PracticeViewModel(
      * @param count Number of questions (e.g., 5 or 10).
      * @param type Question format ("MULTIPLE_CHOICE" or "SHORT_ANSWER").
      * @param language Quiz language ("English" or "Vietnamese").
+     * @param showInstantFeedback Whether to reveal answers immediately or after submission.
      * @param onSuccess Callback invoked when generation and parsing succeed.
      * @param onError Callback invoked when an error occurs.
      */
@@ -268,6 +269,7 @@ class PracticeViewModel(
         count: Int = 5,
         type: String = "MULTIPLE_CHOICE",
         language: String = "English",
+        showInstantFeedback: Boolean = true,
         onSuccess: (Quiz) -> Unit = {},
         onError: (String) -> Unit = {}
     ) {
@@ -347,11 +349,12 @@ class PracticeViewModel(
                     defaultType = type
                 )
 
-                // Attach current user's UID to creatorId
+                // Attach current user's UID to creatorId and set showInstantFeedback preference
                 val currentUid = auth.currentUser?.uid
                 val newQuiz = parsedQuiz.copy(
                     creatorId = currentUid,
-                    isAiGenerated = true
+                    isAiGenerated = true,
+                    showInstantFeedback = showInstantFeedback
                 )
 
                 // Save to Firestore BEFORE updating the local UI state

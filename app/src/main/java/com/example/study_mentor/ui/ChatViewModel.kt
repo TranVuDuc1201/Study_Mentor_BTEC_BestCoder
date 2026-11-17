@@ -50,8 +50,8 @@ data class ChatUiState(
     val selectedImageBase64: String? = null,
     val currentSessionId: String? = null,
     val inputText: String = "",
-    val selectedSubject: String = ChatViewModel.DEFAULT_SUBJECT,
-    val selectedFormat: String = ChatViewModel.DEFAULT_FORMAT
+    val selectedSubject: String? = null,
+    val selectedFormat: String? = null
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -94,44 +94,66 @@ class ChatViewModel(
     }
 
     /**
-     * Updates the active subject for dynamic prompt injection.
+     * Updates or toggles the active subject for dynamic prompt injection.
+     * Passing the currently selected subject deselects it (sets to null).
      */
-    fun onSubjectSelected(subject: String) {
-        _uiState.update { it.copy(selectedSubject = subject) }
+    fun onSubjectSelected(subject: String?) {
+        _uiState.update { current ->
+            val newSubject = if (current.selectedSubject == subject) null else subject
+            current.copy(selectedSubject = newSubject)
+        }
     }
 
     /**
-     * Updates the active output format for dynamic prompt injection.
+     * Updates or toggles the active output format for dynamic prompt injection.
+     * Passing the currently selected format deselects it (sets to null).
      */
-    fun onFormatSelected(format: String) {
-        _uiState.update { it.copy(selectedFormat = format) }
+    fun onFormatSelected(format: String?) {
+        _uiState.update { current ->
+            val newFormat = if (current.selectedFormat == format) null else format
+            current.copy(selectedFormat = newFormat)
+        }
+    }
+
+    /**
+     * Clears both subject and output format context chips back to null.
+     */
+    fun resetContextFilters() {
+        _uiState.update { it.copy(selectedSubject = null, selectedFormat = null) }
     }
 
     /**
      * Dynamically builds the final prompt based on the selected Subject and Output Format.
-     * Implements prompt engineering injection:
-     * - Role anchor: "Act as an expert in $selectedSubject. "
-     * - If the user typed a specific question, it uses their query.
-     * - Otherwise ("Lazy User" flow), it generates the format instruction.
      */
     fun buildEffectivePrompt(
         userInput: String,
-        subject: String = _uiState.value.selectedSubject,
-        format: String = _uiState.value.selectedFormat,
+        subject: String? = _uiState.value.selectedSubject,
+        format: String? = _uiState.value.selectedFormat,
         hasImage: Boolean = true
     ): String {
         val trimmed = userInput.trim()
         if (trimmed.startsWith("Act as an expert in")) {
             return trimmed
         }
+        val subjectPrefix = if (!subject.isNullOrBlank()) "Act as an expert in $subject. " else ""
+        val formatSuffix = if (!format.isNullOrBlank()) " Provide a $format." else ""
+
         val instruction = if (trimmed.isNotBlank()) {
             trimmed
         } else if (hasImage) {
-            "Analyze the attached image and provide a $format."
+            if (!format.isNullOrBlank()) {
+                "Analyze the attached image and provide a $format."
+            } else {
+                "Analyze the attached image and solve/explain step-by-step."
+            }
         } else {
-            "Provide a $format explanation."
+            if (!format.isNullOrBlank()) {
+                "Provide a $format explanation."
+            } else {
+                "How can I help you today?"
+            }
         }
-        return "Act as an expert in $subject. $instruction"
+        return "$subjectPrefix$instruction$formatSuffix".trim()
     }
 
     /**
@@ -158,7 +180,9 @@ class ChatViewModel(
                 errorMessage = null,
                 selectedImageUri = null,
                 selectedImageBase64 = null,
-                inputText = ""
+                inputText = "",
+                selectedSubject = null,
+                selectedFormat = null
             )
         }
     }
@@ -376,6 +400,9 @@ class ChatViewModel(
 
         // Auto-create a session in Firestore if currentSessionId is null
         var activeSessionId = _uiState.value.currentSessionId
+        val currentSubject = _uiState.value.selectedSubject
+        val currentFormat = _uiState.value.selectedFormat
+
         if (activeSessionId == null && uid != null) {
             try {
                 val sessionTitle = if (effectivePrompt.isNotBlank()) {
@@ -383,7 +410,12 @@ class ChatViewModel(
                 } else {
                     "New Image Chat"
                 }
-                activeSessionId = repository.createNewSession(uid, sessionTitle)
+                activeSessionId = repository.createNewSession(
+                    uid = uid,
+                    title = sessionTitle,
+                    subject = currentSubject,
+                    outputFormat = currentFormat
+                )
                 _uiState.update { it.copy(currentSessionId = activeSessionId) }
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Failed to create session in Firestore", e)
@@ -470,6 +502,7 @@ class ChatViewModel(
                             timestamp = System.currentTimeMillis()
                         )
                         repository.saveMessage(uid, activeSessionId, finalAiMessage)
+                        repository.updateSessionPreview(uid, activeSessionId, finalAiText.take(160))
                     } catch (e: Exception) {
                         Log.e("ChatViewModel", "Failed to save AI message to Firestore", e)
                     }

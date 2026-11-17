@@ -1,5 +1,6 @@
 package com.example.study_mentor.ui
 
+import android.media.MediaPlayer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -50,9 +52,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,11 +64,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.study_mentor.R
 import com.example.study_mentor.data.Question
 import com.example.study_mentor.data.QuestionType
 import com.example.study_mentor.data.Quiz
@@ -78,6 +85,37 @@ fun QuizTakingScreen(
     onNavigateBack: () -> Unit = {},
     viewModel: PracticeViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+
+    // Instantiate MediaPlayer exactly once across recompositions to prevent stuttering/re-triggering
+    val mediaPlayer = remember {
+        try {
+            MediaPlayer.create(context, R.raw.bg_music_beneath_rain)?.apply {
+                isLooping = true
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // Wrap start() and release() strictly inside DisposableEffect(Unit)
+    DisposableEffect(Unit) {
+        try {
+            mediaPlayer?.start()
+        } catch (e: Exception) {
+            // Ignore if playback fails
+        }
+
+        onDispose {
+            try {
+                if (mediaPlayer?.isPlaying == true) {
+                    mediaPlayer.stop()
+                }
+            } catch (_: Exception) {}
+            mediaPlayer?.release()
+        }
+    }
+
     val quizzes by viewModel.quizzes.collectAsState()
     val quiz = remember(quizzes, quizId) {
         quizzes.find { it.id == quizId }
@@ -153,9 +191,16 @@ private fun QuizActiveSession(
     var currentQuestionIndex by remember { mutableIntStateOf(0) }
     var correctAnswersCount by remember { mutableIntStateOf(0) }
 
+    // Map to track user answers for all questions (used for final scoring upon submission)
+    val userAnswers = remember { mutableStateMapOf<Int, String>() }
+
     // User response for current question
-    var selectedOption by remember(currentQuestionIndex) { mutableStateOf<String?>(null) }
-    var shortAnswerText by remember(currentQuestionIndex) { mutableStateOf("") }
+    var selectedOption by remember(currentQuestionIndex) {
+        mutableStateOf(userAnswers[currentQuestionIndex])
+    }
+    var shortAnswerText by remember(currentQuestionIndex) {
+        mutableStateOf(userAnswers[currentQuestionIndex] ?: "")
+    }
 
     // Completion Dialog State
     var showCompletionDialog by remember { mutableStateOf(false) }
@@ -295,28 +340,70 @@ private fun QuizActiveSession(
         when (currentQuestion.type) {
             QuestionType.MULTIPLE_CHOICE -> {
                 val options = currentQuestion.options.orEmpty()
+                val isFeedbackActive = quiz.showInstantFeedback && selectedOption != null
+
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     options.forEach { option ->
                         val isSelected = selectedOption == option
+                        val isCorrectAnswer = option.trim().equals(currentQuestion.correctAnswer.trim(), ignoreCase = true)
+
+                        val backgroundColor: Color
+                        val contentColor: Color
+                        val borderColor: Color
+
+                        if (isFeedbackActive) {
+                            when {
+                                // 1. Current option is the correctAnswer -> distinct Green, regardless of user pick
+                                isCorrectAnswer -> {
+                                    backgroundColor = Color(0xFF4CAF50)
+                                    contentColor = Color.White
+                                    borderColor = Color(0xFF4CAF50)
+                                }
+                                // 2. Current option is selectedOption AND NOT the correctAnswer -> distinct Red
+                                isSelected && !isCorrectAnswer -> {
+                                    backgroundColor = Color(0xFFF44336)
+                                    contentColor = Color.White
+                                    borderColor = Color(0xFFF44336)
+                                }
+                                // 3. Other unselected, wrong options remain default/gray
+                                else -> {
+                                    backgroundColor = Color(0xFFF5F5F5)
+                                    contentColor = Color(0xFF757575)
+                                    borderColor = Color(0xFFE0E0E0)
+                                }
+                            }
+                        } else if (!quiz.showInstantFeedback && isSelected) {
+                            // Instant feedback off: highlight selectedOption with PrimaryBlue, user can change answer
+                            backgroundColor = PrimaryBlue
+                            contentColor = Color.White
+                            borderColor = PrimaryBlue
+                        } else {
+                            // Default unselected state
+                            backgroundColor = Color.White
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                            borderColor = MaterialTheme.colorScheme.outlineVariant
+                        }
+
+                        val selectAction = {
+                            if (!isFeedbackActive) {
+                                selectedOption = option
+                                userAnswers[currentQuestionIndex] = option
+                            }
+                        }
+
                         OutlinedCard(
-                            onClick = { selectedOption = option },
+                            onClick = selectAction,
+                            enabled = !isFeedbackActive,
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.outlinedCardColors(
-                                containerColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                } else {
-                                    Color.White
-                                }
+                                containerColor = backgroundColor,
+                                disabledContainerColor = backgroundColor
                             ),
                             border = BorderStroke(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant
-                                }
+                                width = if (isSelected || (isFeedbackActive && isCorrectAnswer)) 2.dp else 1.dp,
+                                color = borderColor
                             ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -327,18 +414,72 @@ private fun QuizActiveSession(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
-                                    selected = isSelected,
-                                    onClick = { selectedOption = option },
+                                    selected = isSelected || (isFeedbackActive && isCorrectAnswer),
+                                    onClick = selectAction,
+                                    enabled = !isFeedbackActive,
                                     colors = RadioButtonDefaults.colors(
-                                        selectedColor = MaterialTheme.colorScheme.primary
+                                        selectedColor = contentColor,
+                                        unselectedColor = if (isFeedbackActive) Color(0xFF9E9E9E) else MaterialTheme.colorScheme.outlineVariant,
+                                        disabledSelectedColor = contentColor,
+                                        disabledUnselectedColor = Color(0xFFBDBDBD)
                                     )
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = option,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    fontWeight = if (isSelected || (isFeedbackActive && isCorrectAnswer)) FontWeight.Bold else FontWeight.Normal,
+                                    color = contentColor,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isFeedbackActive) {
+                                    if (isCorrectAnswer) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Correct",
+                                            tint = contentColor,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    } else if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Incorrect",
+                                            tint = contentColor,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Instant feedback helper banner
+                    if (isFeedbackActive) {
+                        val isUserCorrect = selectedOption?.trim().equals(currentQuestion.correctAnswer.trim(), ignoreCase = true)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isUserCorrect) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                            border = BorderStroke(1.dp, if (isUserCorrect) Color(0xFF4CAF50) else Color(0xFFF44336)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isUserCorrect) Icons.Default.Check else Icons.Default.Close,
+                                    contentDescription = null,
+                                    tint = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = if (isUserCorrect) "Correct! Well done." else "Incorrect. The correct answer is: ${currentQuestion.correctAnswer}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
                                 )
                             }
                         }
@@ -363,7 +504,10 @@ private fun QuizActiveSession(
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = shortAnswerText,
-                            onValueChange = { shortAnswerText = it },
+                            onValueChange = {
+                                shortAnswerText = it
+                                userAnswers[currentQuestionIndex] = it
+                            },
                             placeholder = { Text("Type your answer here...") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -387,21 +531,25 @@ private fun QuizActiveSession(
         // ── Next / Submit Button ─────────────────────────────────────────────
         Button(
             onClick = {
-                // Determine whether user's response matches the correctAnswer
-                val userAnswer = when (currentQuestion.type) {
+                // Record the final response for this question in userAnswers map
+                val currentAnswer = when (currentQuestion.type) {
                     QuestionType.MULTIPLE_CHOICE -> selectedOption.orEmpty().trim()
                     QuestionType.SHORT_ANSWER -> shortAnswerText.trim()
                 }
-
-                val isCorrect = userAnswer.equals(currentQuestion.correctAnswer.trim(), ignoreCase = true)
-                val updatedTally = if (isCorrect) correctAnswersCount + 1 else correctAnswersCount
-                correctAnswersCount = updatedTally
+                userAnswers[currentQuestionIndex] = currentAnswer
 
                 if (!isLastQuestion) {
                     currentQuestionIndex++
                 } else {
                     // Final question submitted!
-                    earnedXpResult = onQuizCompleted(updatedTally)
+                    // Calculate the final score only upon complete submission
+                    val totalCorrect = quiz.questions.indices.count { idx ->
+                        val q = quiz.questions[idx]
+                        val ans = userAnswers[idx].orEmpty().trim()
+                        ans.equals(q.correctAnswer.trim(), ignoreCase = true)
+                    }
+                    correctAnswersCount = totalCorrect
+                    earnedXpResult = onQuizCompleted(totalCorrect)
                     showCompletionDialog = true
                 }
             },

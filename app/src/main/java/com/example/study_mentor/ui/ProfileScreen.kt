@@ -1,11 +1,14 @@
 package com.example.study_mentor.ui
 
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +43,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -66,6 +70,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -89,6 +94,8 @@ fun ProfileScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val authState by viewModel.authState.collectAsState()
+    val isUploadingProfilePic by viewModel.isUploadingProfilePic.collectAsState()
+    val profileImageBase64 by viewModel.profileImageBase64.collectAsState()
     val userStats by viewModel.userStats.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -96,20 +103,19 @@ fun ProfileScreen(
     val user = authState.currentUser
 
     // 1. Photo Picker State & Launcher
-    var selectedAvatarUri by remember(user?.photoUrl) {
-        mutableStateOf<Uri?>(user?.photoUrl)
-    }
-
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
-            selectedAvatarUri = uri
-            viewModel.updateProfilePicture(uri) { success, errorMsg ->
+            viewModel.uploadProfilePicture(context, uri) { success, errorMsg ->
                 if (success) {
                     Toast.makeText(context, "Profile picture updated successfully!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Toast.makeText(context, errorMsg ?: "Failed to update profile picture", Toast.LENGTH_SHORT).show()
+                    val message = errorMsg ?: "Failed to upload profile picture"
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(message)
+                    }
                 }
             }
         }
@@ -161,8 +167,9 @@ fun ProfileScreen(
                 EditableAvatarSection(
                     displayName = displayName,
                     email = user.email,
-                    initial = displayName.firstOrNull()?.uppercase() ?: "S",
-                    avatarUri = selectedAvatarUri,
+                    initial = displayName.trim().firstOrNull()?.uppercase() ?: "S",
+                    profileImageBase64 = profileImageBase64,
+                    isUploading = isUploadingProfilePic,
                     userStats = userStats,
                     onAvatarClick = {
                         photoPickerLauncher.launch(
@@ -324,7 +331,7 @@ fun ProfileScreen(
 
 /**
  * 1. Editable Avatar Section
- * - Circular profile picture rendered via Coil's AsyncImage (with monogram fallback).
+ * - Circular profile picture rendered directly from Firestore Base64 string via Image(bitmap).
  * - Circular camera/edit badge overlapping the bottom-right.
  * - Displays user's name and XP badge.
  */
@@ -333,11 +340,24 @@ private fun EditableAvatarSection(
     displayName: String,
     email: String?,
     initial: String,
-    avatarUri: Uri?,
+    profileImageBase64: String?,
+    isUploading: Boolean,
     userStats: UserStats,
     onAvatarClick: () -> Unit
 ) {
-    val context = LocalContext.current
+    // Decode Base64 string to Compose ImageBitmap
+    val profileBitmap = remember(profileImageBase64) {
+        if (!profileImageBase64.isNullOrBlank()) {
+            try {
+                val decodedBytes = Base64.decode(profileImageBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -350,7 +370,7 @@ private fun EditableAvatarSection(
         Box(
             modifier = Modifier
                 .size(116.dp)
-                .clickable(onClick = onAvatarClick),
+                .clickable(enabled = !isUploading, onClick = onAvatarClick),
             contentAlignment = Alignment.Center
         ) {
             // Main Circular Avatar
@@ -366,27 +386,41 @@ private fun EditableAvatarSection(
                 color = MaterialTheme.colorScheme.primaryContainer,
                 shape = CircleShape
             ) {
-                if (avatarUri != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(avatarUri)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "Profile Picture",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (profileBitmap != null) {
+                        Image(
+                            bitmap = profileBitmap,
+                            contentDescription = "Profile Picture",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        // Solid background with the user's initial (like a Google account placeholder)
                         Text(
                             text = initial,
                             style = MaterialTheme.typography.displayMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    // Progress overlay during upload
+                    if (isUploading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(36.dp),
+                                color = Color.White,
+                                strokeWidth = 3.dp
+                            )
+                        }
                     }
                 }
             }
@@ -398,7 +432,7 @@ private fun EditableAvatarSection(
                     .offset(x = (-2).dp, y = (-2).dp)
                     .size(36.dp)
                     .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                    .clickable(onClick = onAvatarClick),
+                    .clickable(enabled = !isUploading, onClick = onAvatarClick),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary,
                 shadowElevation = 4.dp
