@@ -7,9 +7,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.json.Json
 
 /**
- * Repository interface defining quiz retrieval and management.
+ * Repository interface defining quiz retrieval, management, and structured AI generation.
  * Designed to be swapped seamlessly between local mock data and a remote Firestore database.
  */
 interface QuizRepository {
@@ -32,6 +33,19 @@ interface QuizRepository {
      * Fetches real-time updates of custom quizzes created by the specified user (where creatorId == userId).
      */
     fun getUserCustomQuizzes(userId: String): Flow<List<Quiz>>
+
+    /**
+     * Parses and safely deserializes an LLM structured JSON string into a validated domain [Quiz].
+     */
+    fun parseStructuredQuizJson(
+        rawJson: String,
+        fallbackTopic: String,
+        count: Int,
+        type: String,
+        language: String,
+        creatorId: String?,
+        showInstantFeedback: Boolean
+    ): Result<Quiz>
 }
 
 /**
@@ -44,88 +58,124 @@ class QuizRepositoryImpl(
 
     private val seedQuizzes = listOf(
         Quiz(
-            id = "quiz_grade_1_math",
-            title = "Grade 1 Math",
-            description = "Fundamental addition, subtraction, and basic counting skills.",
+            id = "quiz_math_calculus",
+            title = "High School Math — Functions & Calculus",
+            description = "Core calculus topics: function monotonicity, extrema, domain, and definite integrals.",
             maxXp = 100,
             questions = listOf(
                 Question(
-                    id = "g1_q1",
-                    text = "What is 1 + 1?",
+                    id = "math_q1",
+                    text = "On which of the following intervals is the function f(x) = x³ - 3x + 2 strictly increasing?",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("1", "2", "3", "4"),
-                    correctAnswer = "2"
+                    options = listOf("(-∞, -1) and (1, +∞)", "(-1, 1)", "(0, 2)", "(-∞, 1)"),
+                    correctAnswer = "(-∞, -1) and (1, +∞)"
                 ),
                 Question(
-                    id = "g1_q2",
-                    text = "What is 5 - 2?",
-                    type = QuestionType.SHORT_ANSWER,
-                    options = null,
-                    correctAnswer = "3"
-                ),
-                Question(
-                    id = "g1_q3",
-                    text = "Which number comes right after 9?",
+                    id = "math_q2",
+                    text = "What is the domain of the function f(x) = log₂(x - 3)?",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("8", "10", "11", "12"),
-                    correctAnswer = "10"
+                    options = listOf("(3, +∞)", "[3, +∞)", "(-∞, 3)", "All real numbers except 3"),
+                    correctAnswer = "(3, +∞)"
                 ),
                 Question(
-                    id = "g1_q4",
-                    text = "If you have 3 apples and eat 1, how many are left?",
+                    id = "math_q3",
+                    text = "What is the local minimum value of the function f(x) = x⁴ - 2x² + 3?",
                     type = QuestionType.SHORT_ANSWER,
                     options = null,
                     correctAnswer = "2"
                 ),
                 Question(
-                    id = "g1_q5",
-                    text = "How many sides does a triangle have?",
+                    id = "math_q4",
+                    text = "In 3D space, which vector is normal to the plane 2x - y + 3z - 5 = 0?",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("2", "3", "4", "5"),
-                    correctAnswer = "3"
+                    options = listOf("n = (2, -1, 3)", "n = (2, 1, 3)", "n = (2, -1, -5)", "n = (-1, 3, -5)"),
+                    correctAnswer = "n = (2, -1, 3)"
+                ),
+                Question(
+                    id = "math_q5",
+                    text = "Evaluate the definite integral of (2x + 1) dx from 0 to 1.",
+                    type = QuestionType.SHORT_ANSWER,
+                    options = null,
+                    correctAnswer = "2"
                 )
             )
         ),
         Quiz(
-            id = "quiz_grade_2_math",
-            title = "Grade 2 Math",
-            description = "Two-digit addition, subtraction, early multiplication, and number patterns.",
-            maxXp = 150,
+            id = "quiz_physics_waves",
+            title = "High School Physics — Harmonic Motion & Waves",
+            description = "Key concepts in spring oscillators, wave speed, phase difference, and interference.",
+            maxXp = 120,
             questions = listOf(
                 Question(
-                    id = "g2_q1",
-                    text = "What is 15 + 12?",
+                    id = "phys_q1",
+                    text = "For a spring oscillator with spring constant k and mass m, what is the angular frequency ω?",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("25", "26", "27", "28"),
-                    correctAnswer = "27"
+                    options = listOf("ω = √(k / m)", "ω = √(m / k)", "ω = 2π√(k / m)", "ω = 2π√(m / k)"),
+                    correctAnswer = "ω = √(k / m)"
                 ),
                 Question(
-                    id = "g2_q2",
-                    text = "What is 50 - 18?",
+                    id = "phys_q2",
+                    text = "Given the oscillation equation x = 5cos(2πt + π/4) cm, what is the amplitude in cm?",
                     type = QuestionType.SHORT_ANSWER,
                     options = null,
-                    correctAnswer = "32"
+                    correctAnswer = "5"
                 ),
                 Question(
-                    id = "g2_q3",
-                    text = "What is 4 x 5?",
+                    id = "phys_q3",
+                    text = "Two harmonic oscillations of the same frequency are in opposite phase when their phase difference is:",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("15", "18", "20", "24"),
-                    correctAnswer = "20"
+                    options = listOf("(2k + 1)π", "2kπ", "(2k + 1)π / 2", "kπ"),
+                    correctAnswer = "(2k + 1)π"
                 ),
                 Question(
-                    id = "g2_q4",
-                    text = "What number plus 14 equals 30?",
+                    id = "phys_q4",
+                    text = "A wave travels with speed v = 12 m/s and frequency f = 6 Hz. What is the wavelength in meters?",
                     type = QuestionType.SHORT_ANSWER,
                     options = null,
-                    correctAnswer = "16"
+                    correctAnswer = "2"
                 ),
                 Question(
-                    id = "g2_q5",
-                    text = "Which of the following is an even number?",
+                    id = "phys_q5",
+                    text = "In two-source in-phase wave interference, constructive interference points have path difference d₂ - d₁ equal to:",
                     type = QuestionType.MULTIPLE_CHOICE,
-                    options = listOf("13", "17", "24", "31"),
-                    correctAnswer = "24"
+                    options = listOf("kλ", "(k + 0.5)λ", "(2k + 1)λ / 4", "kλ / 2"),
+                    correctAnswer = "kλ"
+                )
+            )
+        ),
+        Quiz(
+            id = "quiz_chemistry_reactions",
+            title = "High School Chemistry — Organic Reactions & Stoichiometry",
+            description = "Practice questions covering esters, carbohydrates, saponification, and redox reactions.",
+            maxXp = 100,
+            questions = listOf(
+                Question(
+                    id = "chem_q1",
+                    text = "What is the molecular formula of methyl acetate?",
+                    type = QuestionType.MULTIPLE_CHOICE,
+                    options = listOf("C₃H₆O₂", "C₄H₈O₂", "C₂H₄O₂", "C₃H₈O₂"),
+                    correctAnswer = "C₃H₆O₂"
+                ),
+                Question(
+                    id = "chem_q2",
+                    text = "Which of the following carbohydrates is a disaccharide?",
+                    type = QuestionType.MULTIPLE_CHOICE,
+                    options = listOf("Sucrose", "Glucose", "Fructose", "Starch"),
+                    correctAnswer = "Sucrose"
+                ),
+                Question(
+                    id = "chem_q3",
+                    text = "How many moles of glycerol are produced by the complete hydrolysis of 1 mole of triglyceride?",
+                    type = QuestionType.SHORT_ANSWER,
+                    options = null,
+                    correctAnswer = "1"
+                ),
+                Question(
+                    id = "chem_q4",
+                    text = "What is the ester formed from the reaction between acetic acid (CH₃COOH) and ethanol (C₂H₅OH)?",
+                    type = QuestionType.MULTIPLE_CHOICE,
+                    options = listOf("Ethyl acetate", "Methyl formate", "Ethyl formate", "Propyl acetate"),
+                    correctAnswer = "Ethyl acetate"
                 )
             )
         )
@@ -179,6 +229,91 @@ class QuizRepositoryImpl(
         }
 
         awaitClose { registration.remove() }
+    }
+
+    /**
+     * Defensive Json parser instance configured for safe deserialization without regex hacks.
+     */
+    private val defensiveJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = false
+        coerceInputValues = true
+    }
+
+    override fun parseStructuredQuizJson(
+        rawJson: String,
+        fallbackTopic: String,
+        count: Int,
+        type: String,
+        language: String,
+        creatorId: String?,
+        showInstantFeedback: Boolean
+    ): Result<Quiz> = runCatching {
+        val trimmed = rawJson.trim()
+        if (trimmed.isEmpty()) {
+            throw IllegalArgumentException("AI service returned an empty quiz payload.")
+        }
+
+        val dto = defensiveJson.decodeFromString<GeneratedQuizDto>(trimmed)
+
+        if (dto.questions.isEmpty()) {
+            throw IllegalArgumentException("AI quiz response contains no questions.")
+        }
+
+        val defaultIsShortAnswer = type.contains("SHORT", ignoreCase = true)
+        val domainQuestions = dto.questions.mapIndexed { index, qDto ->
+            val isShortAnswer = defaultIsShortAnswer || qDto.options.isEmpty()
+            val questionType = if (isShortAnswer) QuestionType.SHORT_ANSWER else QuestionType.MULTIPLE_CHOICE
+
+            val options = if (isShortAnswer) {
+                null
+            } else {
+                if (qDto.options.size < 2) {
+                    throw IllegalArgumentException("Multiple choice question ${index + 1} must have at least 2 options.")
+                }
+                qDto.options
+            }
+
+            // Validate correctIndex bounds for multiple-choice questions
+            val resolvedCorrectAnswer = if (isShortAnswer) {
+                qDto.correctAnswer.ifBlank { "Answer" }
+            } else {
+                val opts = options ?: emptyList()
+                if (qDto.correctIndex in opts.indices) {
+                    opts[qDto.correctIndex]
+                } else if (qDto.correctAnswer.isNotBlank() && qDto.correctAnswer in opts) {
+                    qDto.correctAnswer
+                } else {
+                    throw IndexOutOfBoundsException(
+                        "correctIndex ${qDto.correctIndex} is out of bounds for options count ${opts.size} in question ${index + 1}."
+                    )
+                }
+            }
+
+            Question(
+                id = "q_${index + 1}",
+                text = qDto.question.ifBlank { "Question ${index + 1}" },
+                type = questionType,
+                options = options,
+                correctAnswer = resolvedCorrectAnswer,
+                explanation = qDto.explanation
+            )
+        }
+
+        val title = dto.title.ifBlank { fallbackTopic.ifBlank { "Custom Quiz" } }
+        val description = dto.description.ifBlank { "Curriculum practice on $title" }
+        val maxXp = count * 20
+
+        Quiz(
+            id = "ai_${System.currentTimeMillis()}",
+            title = title,
+            description = description,
+            maxXp = maxXp,
+            questions = domainQuestions,
+            isAiGenerated = true,
+            creatorId = creatorId,
+            showInstantFeedback = showInstantFeedback
+        )
     }
 
     private fun documentToQuiz(doc: DocumentSnapshot): Quiz? {

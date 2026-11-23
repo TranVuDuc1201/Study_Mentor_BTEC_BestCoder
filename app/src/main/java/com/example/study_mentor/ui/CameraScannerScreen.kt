@@ -118,6 +118,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -341,7 +345,7 @@ fun InteractiveViewfinderOverlay(
                 .offset { IntOffset(0, hintY) }
         ) {
             Text(
-                text = "Drag corners to fit math problem",
+                text = "Drag 4 corners to frame the question or problem",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
@@ -411,13 +415,27 @@ fun cropAndSaveImage(
     val cropH = (cropRect.height / scale).toInt().coerceIn(1, bHeight - startY)
 
     // 6. Crop bitmap to the user's viewfinder selection
-    val croppedBitmap = Bitmap.createBitmap(orientedBitmap, startX, startY, cropW, cropH)
-    if (croppedBitmap != orientedBitmap) orientedBitmap.recycle()
+    val croppedRaw = Bitmap.createBitmap(orientedBitmap, startX, startY, cropW, cropH)
+    if (croppedRaw != orientedBitmap) orientedBitmap.recycle()
 
-    // 7. Save cropped bitmap to temporary cache file
+    // 7. Downscale cropped bitmap so its longest side is at most 1024px
+    val maxDim = 1024
+    val longestSide = maxOf(croppedRaw.width, croppedRaw.height)
+    val croppedBitmap = if (longestSide > maxDim) {
+        val downscaleRatio = maxDim.toFloat() / longestSide.toFloat()
+        val targetW = (croppedRaw.width * downscaleRatio).toInt().coerceAtLeast(1)
+        val targetH = (croppedRaw.height * downscaleRatio).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(croppedRaw, targetW, targetH, true)
+        if (scaled != croppedRaw) croppedRaw.recycle()
+        scaled
+    } else {
+        croppedRaw
+    }
+
+    // 8. Save compressed bitmap (75-80% quality) to temporary cache file
     val croppedFile = File.createTempFile("CROP_${System.currentTimeMillis()}_", ".jpg", context.cacheDir)
     FileOutputStream(croppedFile).use { out ->
-        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 78, out)
     }
     croppedBitmap.recycle()
 
@@ -455,8 +473,8 @@ fun takePhotoAndCrop(
         ContextCompat.getMainExecutor(context),
         object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
-                // Background thread for rotation, aspect ratio mapping, and cropping
-                Thread {
+                // Background coroutine on Dispatchers.Default for rotation, downscaling, and memory-safe cropping
+                CoroutineScope(Dispatchers.Default).launch {
                     try {
                         val croppedUri = cropAndSaveImage(
                             context = context,
@@ -468,7 +486,7 @@ fun takePhotoAndCrop(
                         // Delete full-size uncropped temporary file
                         try { tempFile.delete() } catch (_: Exception) {}
 
-                        ContextCompat.getMainExecutor(context).execute {
+                        withContext(Dispatchers.Main) {
                             if (croppedUri != null) {
                                 onSuccess(croppedUri)
                             } else {
@@ -477,11 +495,11 @@ fun takePhotoAndCrop(
                         }
                     } catch (e: Exception) {
                         try { tempFile.delete() } catch (_: Exception) {}
-                        ContextCompat.getMainExecutor(context).execute {
+                        withContext(Dispatchers.Main) {
                             onError(e)
                         }
                     }
-                }.start()
+                }
             }
 
             override fun onError(exception: ImageCaptureException) {
@@ -537,7 +555,7 @@ fun CameraPermissionRationale(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Study Mentor requires camera access to scan and solve math problems in real-time. Please grant permission to continue.",
+            text = "Study Mentor requires camera access to scan and guide you through study problems using Socratic mentoring. Please grant permission to continue.",
             style = MaterialTheme.typography.bodyMedium,
             color = Color.LightGray,
             textAlign = TextAlign.Center
@@ -871,7 +889,7 @@ fun CameraScannerScreen(
                 OutlinedTextField(
                     value = uiState.inputText,
                     onValueChange = { chatViewModel.onInputTextChanged(it) },
-                    placeholder = { Text("Ask something...", color = Color(0xFFA1A1AA)) },
+                    placeholder = { Text("Ask for a hint or step-by-step help...", color = Color(0xFFA1A1AA)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -1014,7 +1032,7 @@ fun CameraScannerScreen(
 
                         // Row 2: Format Selection
                         Text(
-                            text = "OUTPUT FORMAT",
+                            text = "GUIDANCE MODE (SOCRATIC)",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFA1A1AA)
@@ -1048,6 +1066,7 @@ fun CameraScannerScreen(
 @Composable
 fun ChatBubble(message: ChatMessage) {
     val isUser = message.role == "user"
+    val displayText = remember(message.text) { cleanAiFormatting(message.text) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1064,7 +1083,7 @@ fun ChatBubble(message: ChatMessage) {
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Text(
-                text = message.text,
+                text = displayText,
                 color = if (isUser) Color.White else Color(0xFFEDE0DB),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)

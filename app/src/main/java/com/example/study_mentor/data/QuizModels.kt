@@ -1,5 +1,7 @@
 package com.example.study_mentor.data
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 
 /**
@@ -11,6 +13,28 @@ enum class QuestionType {
 }
 
 /**
+ * DTO representing an individual question returned by LLM Structured Outputs.
+ */
+@Serializable
+data class GeneratedQuestionDto(
+    val question: String = "",
+    val options: List<String> = emptyList(),
+    val correctIndex: Int = 0,
+    val correctAnswer: String = "",
+    val explanation: String = ""
+)
+
+/**
+ * DTO representing the root quiz response returned by LLM Structured Outputs.
+ */
+@Serializable
+data class GeneratedQuizDto(
+    val title: String = "",
+    val description: String = "",
+    val questions: List<GeneratedQuestionDto> = emptyList()
+)
+
+/**
  * Represents an individual quiz question.
  *
  * @param id Unique identifier for the question.
@@ -18,13 +42,15 @@ enum class QuestionType {
  * @param type The type of question (MULTIPLE_CHOICE or SHORT_ANSWER).
  * @param options List of choices for multiple choice questions, or null for short answer questions.
  * @param correctAnswer The case-insensitive expected answer string.
+ * @param explanation Explanation of the solution and reasoning.
  */
 data class Question(
     val id: String = "",
     val text: String = "",
     val type: QuestionType = QuestionType.MULTIPLE_CHOICE,
     val options: List<String>? = null,
-    val correctAnswer: String = ""
+    val correctAnswer: String = "",
+    val explanation: String = ""
 )
 
 /**
@@ -52,18 +78,30 @@ data class Quiz(
 )
 
 /**
- * Utility function to calculate earned XP based on quiz performance.
+ * Utility function to calculate earned XP based on quiz performance and mastery accuracy.
  *
- * Distributes XP proportionally:
- * E.g., Answering 3 out of 5 questions correctly on a 100 XP quiz returns 60 XP.
+ * Distributes XP proportionally with gamification mastery bonuses:
+ * - Base proportional XP: (correct / total) * maxXp
+ * - Perfect Accuracy Mastery Bonus: +20% bonus XP when 100% of questions are answered correctly.
+ * - High Comprehension Bonus: +10% bonus XP when accuracy is >= 80%.
  *
  * @param correctAnswers Number of questions correctly answered by the student.
  * @param totalQuestions Total number of questions in the quiz.
  * @param maxXp Maximum XP designated for this quiz.
- * @return Proportionally distributed XP, clamped between 0 and maxXp.
+ * @return Proportionally distributed XP with mastery bonuses, minimum 0.
  */
 fun calculateEarnedXp(correctAnswers: Int, totalQuestions: Int, maxXp: Int): Int {
     if (totalQuestions <= 0 || maxXp <= 0 || correctAnswers <= 0) return 0
     val safeCorrect = correctAnswers.coerceIn(0, totalQuestions)
-    return ((safeCorrect.toDouble() / totalQuestions.toDouble()) * maxXp.toDouble()).roundToInt()
+    val accuracyRatio = safeCorrect.toDouble() / totalQuestions.toDouble()
+    val baseEarned = accuracyRatio * maxXp.toDouble()
+
+    // Gamification Mastery Bonus rewarding deep comprehension:
+    val masteryBonus = when {
+        safeCorrect == totalQuestions -> maxXp * 0.20 // 100% Perfect Score
+        accuracyRatio >= 0.80 -> maxXp * 0.10          // 80%+ High Comprehension
+        else -> 0.0
+    }
+
+    return (baseEarned + masteryBonus).roundToInt()
 }

@@ -2,8 +2,8 @@
 
 <img src="art/study_mentor_logo.png" alt="Study Mentor Logo" width="140" height="140" style="border-radius: 28px;" />
 
-# 🎓 Study Mentor — Your AI Study Companion
-### *Next-Generation Multimodal AI Educational Assistant with Real-Time Vision & RPG Gamification*
+# 🎓 Study Mentor — Socratic AI Study Companion
+### *Guided Socratic Learning Assistant for Vietnamese High School Students (THPT & Ôn Thi Tốt Nghiệp)*
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.2.10-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=android&logoColor=white)](https://developer.android.com/jetpack/compose)
@@ -12,7 +12,7 @@
 [![OpenAI SSE](https://img.shields.io/badge/AI%20Streaming-SSE%20Token%20Stream-412991?style=for-the-badge&logo=openai&logoColor=white)](https://platform.openai.com)
 
 <p align="center">
-  <b>Empowering students to master complex STEM concepts through instant multimodal problem solving, interactive viewfinder cropping, and motivating RPG progression.</b>
+  <b>Empowering Vietnamese high school students to master complex STEM & curriculum concepts through guided Socratic scaffolding (Hint First ➔ Step-by-Step ➔ Deep Insight), live CameraX viewfinder cropping, and motivating RPG progression.</b>
 </p>
 
 ---
@@ -20,103 +20,146 @@
 </div>
 
 ## 📖 Table of Contents
-- [🌟 Overview & Motivation](#-overview--motivation)
-- [✨ Core Features](#-core-features)
-  - [1. Multimodal Ask AI & Live Camera Viewfinder](#1-multimodal-ask-ai--live-camera-viewfinder)
-  - [2. Interactive Resizable Crop Viewfinder](#2-interactive-resizable-crop-viewfinder)
-  - [3. Precision Aspect-Ratio Bitmap Cropping](#3-precision-aspect-ratio-bitmap-cropping)
-  - [4. Smart Gamification & RPG Leveling System](#4-smart-gamification--rpg-leveling-system)
-  - [5. Daily Practice & Assessment Engine](#5-daily-practice--assessment-engine)
-  - [6. Cloud Session History & Profile Customization](#6-cloud-session-history--profile-customization)
-- [📸 Application Preview](#-application-preview)
+- [🎯 Strategic Positioning & Target Persona](#-strategic-positioning--target-persona)
+- [💡 Why Not Just ChatGPT or Gemini? (Product Differentiation)](#-why-not-just-chatgpt-or-gemini-product-differentiation)
+- [✨ Core Pedagogical & Technical Features](#-core-pedagogical--technical-features)
+  - [1. Socratic 3-Stage Guided Flow](#1-socratic-3-stage-guided-flow)
+  - [2. Interactive Resizable Crop Viewfinder (CameraX)](#2-interactive-resizable-crop-viewfinder-camerax)
+  - [3. Resilient SSE Token Streaming Pipeline](#3-resilient-sse-token-streaming-pipeline)
+  - [4. RPG Gamification & Mastery Accuracy Rewards](#4-rpg-gamification--mastery-accuracy-rewards)
+  - [5. Curriculum-Aligned Practice & AI Quiz Generator](#5-curriculum-aligned-practice--ai-quiz-generator)
+  - [6. Transparent Cloud Study History & Multi-Tier Auth](#6-transparent-cloud-study-history--multi-tier-auth)
 - [🛠️ Tech Stack & Architecture](#️-tech-stack--architecture)
 - [📂 Project Structure](#-project-structure)
 - [🚀 Installation & Setup](#-installation--setup)
 - [🔐 Environment & Secrets Configuration](#-environment--secrets-configuration)
-- [🏆 Best Coder 2026 Highlights](#-best-coder-2026-highlights)
-- [📄 License](#-license)
+- [🚀 Future Roadmap (Post-Competition)](#-future-roadmap-post-competition)
+- [🏆 Best Coder 2026 Competitive Highlights](#-best-coder-2026-competitive-highlights)
 
 ---
 
-## 🌟 Overview & Motivation
+## 🎯 Strategic Positioning & Target Persona
 
-In modern education, students often encounter conceptual bottlenecks while doing self-study or homework. Traditional study tools present two major pain points:
-1. **Friction in Querying**: Manually typing mathematical equations, geometric notations, or chemistry formulas on a mobile keyboard is tedious and prone to syntax errors.
-2. **Lack of Engagement & Motivation**: Passive reading and answer lookups lead to rapid student burnout without continuous positive feedback.
+### The Core Problem in Modern EdTech
+Most existing AI homework solvers operate as **passive "answer-dumping vending machines"**:
+1. Students snap a photo and immediately receive the final option (`A`, `B`, `C`, `D`) or a full solution copy-pasted directly into their homework.
+2. This creates **cognitive dependency** and an illusion of competence: students complete worksheets quickly without understanding the underlying principles, resulting in severe performance drops during unassisted exams.
 
-**Study Mentor** bridges this gap by merging **high-performance mobile vision** with **generative AI streaming** and **RPG gamification mechanics**:
-- Students point their camera at any textbook equation or worksheet.
-- A dynamic, interactive viewfinder lets them tightly frame the exact problem of interest.
-- With a single tap, the app crops the Region of Interest (ROI), streams tokens via Server-Sent Events (SSE) in real-time, and generates step-by-step Socratic explanations.
-- Every question asked and quiz solved awards Experience Points (XP), leveling up the student's gaming rank from **Novice** all the way to **Mythic Grandmaster**.
+### Our Target Persona: High School Students (Grades 10–12)
+- **Primary Goal**: Preparing for high school graduation exams, university entrance tests, and rigorous STEM curriculum mastery.
+- **Core Pain Point**: High-stakes exams require problem decomposition, formula adaptation under time pressure, and deep conceptual understanding—skills completely bypassed by generic answer generators.
+- **Our Value Proposition**: **Study Mentor** acts as a dedicated **Socratic Mentor**, actively guiding students to discover solutions themselves through structured hints, conceptual scaffolding, and exam-aligned tips.
 
 ---
 
-## ✨ Core Features
+## 💡 Why Not Just ChatGPT or Gemini? (Product Differentiation)
 
-### 1. Multimodal Ask AI & Live Camera Viewfinder
-- **Real-Time Token Streaming (SSE)**: Powered by a resilient, low-latency streaming pipeline using `HttpURLConnection` and coroutine `Flow<String>`. Tokens render incrementally character-by-character as the model generates them, eliminating user waiting fatigue.
-- **One-Tap Capture & "Lazy User" Logic**: Tapping the glowing contextual center Floating Action Button (FAB) triggers CameraX `ImageCapture`, extracts the cropped math problem, detects whether the input query is blank, and automatically falls back to:
-  > *"Solve this math problem step-by-step and explain the concepts."*
-  The student gets an instant solution with **zero extra clicks**.
-- **Contextual Animated FAB**: The center navigation button features a continuous, hardware-accelerated 360° rotating RGB LED ring glow. When on the "Ask AI" tab, it dynamically morphs from sparkles (`AutoAwesome`) to a paper airplane (`Send`), providing instant feedback with an inline `CircularProgressIndicator` while the AI thinks.
+| Dimension | Generic LLM Chatbots (ChatGPT / Gemini) | Study Mentor (Socratic Companion) |
+| :--- | :--- | :--- |
+| **Pedagogy** | Dumps full solutions immediately; encourages passive copy-pasting | **Socratic Guidance**: Hint First ➔ Step-by-Step ➔ Deep Insight & Exam Tips |
+| **Curriculum Context** | Broad, generic international knowledge; misses regional exam nuances | **Bespoke THPT Alignment**: Calibrated for Vietnamese GDPT (Toán 12, Lý, Hóa, Sinh, Văn, Sử) |
+| **Mobile Capture Friction** | Generic photo upload requires switching apps or manually typing formulas | **Fluid Resizable Viewfinder**: One-tap ROI bounding-box cropping with EXIF rotation |
+| **Feedback & Engagement** | Flat conversational threads; easily forgotten after copying | **RPG Gamification**: XP, 10 mastery ranks, and +20% accuracy bonuses for thorough comprehension |
+| **Study History** | Cluttered chronological chat history without subject metadata | **Scoped Cloud Session Store**: Filterable by subject, format, timestamp, with full replay |
 
-### 2. Interactive Resizable Crop Viewfinder
-- **Fluid Gesture Manipulation**: Built on Jetpack Compose `pointerInput` and `detectDragGestures`, allowing students to grab and drag any of the 4 visual corner handles to expand, contract, or pan the bounding box.
-- **Dynamic Punch-Out Shader**: Utilizes an offscreen graphics layer (`CompositingStrategy.Offscreen`) with `BlendMode.Clear` to produce a 100% transparent cutout window over the live CameraX preview while dimming the surrounding background with `Color.Black.copy(alpha = 0.6f)`.
-- **Photomath-Style Guide Brackets**: High-visibility L-bracket corner marks and concentric primary-blue handle dots visually anchor the capture region.
+---
 
-### 3. Precision Aspect-Ratio Bitmap Cropping
-- **EXIF-Aware Auto-Rotation**: Inspects JPEG metadata via `android.media.ExifInterface` and transforms the raw camera buffer by $90^\circ, 180^\circ,$ or $270^\circ$ to guarantee exact alignment with the portrait device orientation.
-- **Scale-Type Geometric Mapping**: Implements the mathematical transformation formula for `PreviewView.ScaleType.FILL_CENTER`:
-  $$\text{scale} = \max\left(\frac{W_{\text{preview}}}{W_{\text{bitmap}}}, \frac{H_{\text{preview}}}{H_{\text{bitmap}}}\right)$$
-  $$\text{offsetX} = \frac{(W_{\text{bitmap}} \cdot \text{scale}) - W_{\text{preview}}}{2}, \quad \text{offsetY} = \frac{(H_{\text{bitmap}} \cdot \text{scale}) - H_{\text{preview}}}{2}$$
-  Accurately translates screen pixel coordinates into sub-sampled bitmap bounds before compressing to JPEG 80% (capped at 1024×1024), minimizing network payload and preventing Out-Of-Memory (OOM) exceptions.
+## ✨ Core Pedagogical & Technical Features
 
-### 4. Smart Gamification & RPG Leveling System
-- **Leveling Formula**: Experience points earned from asking AI questions (+10 XP) and completing practice quizzes (up to +150 XP) contribute to a persistent RPG progression curve:
+### 1. Socratic 3-Stage Guided Flow
+Whenever a student asks a question or captures a problem, `OpenAIApiClient` and `ChatViewModel` dynamically inject a pedagogical prompt enforcing a structured 3-stage response:
+1. 💡 **Hint First**: Identifies the core formula, theorem, or initial guiding question without giving away the final arithmetic or option.
+2. 🧭 **Step-by-Step Guidance**: Breaks the problem into logical checkpoints as the student interacts.
+3. ⚡ **Deep Insight & Exam Tips**: Explains the underlying physical/mathematical mechanism, flags common exam traps, and demonstrates rapid elimination and calculation shortcuts.
+
+### 2. Interactive Resizable Crop Viewfinder & Binary Image Pipeline
+- **Fluid Gesture Manipulation**: Built on Jetpack Compose `pointerInput` and `detectDragGestures`. Students grab any of the 4 corner handles to expand, contract, or pan the bounding box directly over the question of interest.
+- **Dynamic Punch-Out Shader**: Uses an offscreen graphics layer (`CompositingStrategy.Offscreen`) with `BlendMode.Clear` to punch a 100% transparent cutout over the live CameraX preview while dimming outer areas with `Color.Black.copy(alpha = 0.6f)`.
+- **Memory-Safe Downscaling & Binary Multipart Upload (P-12)**:
+  - All bitmap decoding, scaling, and compression execute strictly on `Dispatchers.Default`.
+  - Cropped images are downscaled proportionally so the longest edge is at most `1024px` using `inJustDecodeBounds` / `inSampleSize`, compressed to `JPEG 75–80%` quality, and intermediate bitmaps are explicitly recycled (`.recycle()`).
+  - Raw binary image bytes are uploaded directly via `multipart/form-data` to the backend proxy, eliminating the ~33% Base64 transmission overhead on mobile networks.
+
+### 3. Low-Latency SSE Token Streaming Pipeline
+- **Low-Latency Streaming (Reduced Time-To-First-Token / TTFT via SSE)**: High-performance HTTP streaming using native `HttpURLConnection` and coroutines `Flow<String>`, parsing `data: {...}` lines on `Dispatchers.IO`.
+- **Performance Benchmark Instrumentation**: Logs exact `Upload Payload Size (KB)`, `TTFT (Time-To-First-Token in ms)`, and `Total Stream Time (ms)` on every request under the `PerfBenchmark` tag.
+- **Fail-Fast Mobile Timeouts**: `connectTimeout = 10_000` (10s) and `readTimeout = 20_000` (20s) ensure dropped mobile cellular/Wi-Fi packets fail immediately rather than hanging indefinitely.
+- **Type-Safe Exception Resilience**: Granular handling for `SocketTimeoutException`, `ConnectException`, `UnknownHostException`, and `IOException`, with guaranteed loading/streaming state reset in `finally`.
+
+### 4. RPG Gamification & Mastery Accuracy Rewards
+- **Progress Progression**:
   $$\text{Level} = \left\lfloor \frac{\text{Total XP}}{100} \right\rfloor + 1$$
 - **10 Distinct Mastery Ranks**:
   `Novice (Lvl 1)` ➔ `Scholar (Lvl 2)` ➔ `Adept (Lvl 3)` ➔ `Specialist (Lvl 4)` ➔ `Expert (Lvl 5)` ➔ `Master (Lvl 6)` ➔ `Grandmaster (Lvl 7)` ➔ `Champion (Lvl 8)` ➔ `Legend (Lvl 9)` ➔ `Mythic (Lvl 10+)`.
-- **Cloud Synchronization**: User statistics are synced in real-time with Google Cloud Firestore using reactive Kotlin `StateFlow`, updating user progress cards instantaneously across Home, Practice, and Profile screens.
+- **Mastery Accuracy Bonuses**:
+  - Base Proportional XP: $\frac{\text{Correct}}{\text{Total}} \times \text{Max XP}$
+  - **100% Perfect Score Bonus**: $+20\%$ extra XP rewarding thorough mastery.
+  - **$\ge 80\%$ High Comprehension Bonus**: $+10\%$ extra XP rewarding consistent effort.
 
-### 5. Daily Practice & Assessment Engine
-- **Scalable Quiz Architecture**: Modular repository supporting both `MULTIPLE_CHOICE` and `SHORT_ANSWER` question types.
-- **Proportional XP Scoring**:
-  $$\text{Earned XP} = \text{round}\left(\frac{\text{Correct Answers}}{\text{Total Questions}} \times \text{Max XP}\right)$$
-- **Interactive Quiz Interface**: Clean card layout, real-time feedback, and automated score dialogue with XP rewards on completion.
+### 5. Curriculum-Aligned Practice & AI Quiz Generator
+- **System THPT Curriculum Quizzes**: Seeded with authentic Grade 12 National Exam modules:
+  - *Toán 12 — Khảo sát hàm số & Tích phân*
+  - *Vật lý 12 — Dao động điều hòa & Sóng cơ*
+  - *Hóa học 12 — Este, Lipit & Cacbohiđrat*
+- **Dynamic AI Quiz Generation**: Students configure topic (e.g. *"Di truyền Menđen"*, *"Sóng ánh sáng"*), question count (5 or 10), format (trắc nghiệm / tự luận), and receive custom quizzes directly generated by the AI and saved to their Firestore profile.
 
-### 6. Cloud Session History & Profile Customization
-- **Chat Session Persistence**: All discussions, attached image references, and AI responses are preserved in Firestore under user-specific sub-collections.
-- **Library History Viewer**: Browse and reload past study sessions to review step-by-step solutions before exams.
-- **Custom Profile**: Manage authentication, update student credentials, and choose custom profile avatars.
+### 6. Transparent Cloud Study History & Multi-Tier Auth
+- **Scoped User History**: All study chats, attached image references, and AI responses are persisted under user-scoped Firestore sub-collections (`users/{uid}/chats`).
+- **Authentication Resilience**: Full guest exploration allowed with clean prompts to sign in via Firebase Auth to sync XP and access custom quizzes.
 
 ---
 
 ## 🛠️ Tech Stack & Architecture
 
-Study Mentor is architected following Google's recommended **Modern Android Development (MAD)** standards and Clean Architecture principles.
+### Unidirectional Data Flow (UDF) & Clean Architecture
+Study Mentor enforces strict **MVVM** where state flows down immutably via `StateFlow<UiState>` and user intent flows up via typed ViewModel events. Repositories return immutable domain models or `Flow<T>`, ensuring complete separation between business logic and the Compose UI layer.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                      UI Layer                          │
-│   Jetpack Compose (Material 3) + StateFlow Observers   │
-└──────────────────────────┬─────────────────────────────┘
-                           │ UI Events / State Collection
-┌──────────────────────────▼─────────────────────────────┐
-│                   ViewModel Layer                      │
-│   AuthViewModel | ChatViewModel | PracticeViewModel    │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Coroutines (Dispatchers.IO)
-┌──────────────────────────▼─────────────────────────────┐
-│                   Repository Layer                     │
-│ FirestoreChatRepo | GamificationRepo | QuizRepository  │
-└─────────────┬────────────────────────────┬─────────────┘
-              │                            │
-┌─────────────▼───────────────┐ ┌──────────▼───────────────┐
-│     Remote Network / AI     │ │   Firebase Cloud Suite   │
-│ Custom SSE Stream / OpenAI  │ │ Firestore & Auth SDK     │
-└─────────────────────────────┘ └──────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph UI ["Compose UI Layer (Presentation)"]
+        ChatScreen["Ask AI Screen (CameraScanner / Chat)"]
+        PracticeScreen["Practice & Quiz Screen"]
+        HomeScreen["Home Dashboard & XP Display"]
+    end
+
+    subgraph VM ["ViewModel Layer (UDF & StateFlow)"]
+        ChatVM["ChatViewModel\n(StateFlow&lt;ChatUiState&gt;)"]
+        PracticeVM["PracticeViewModel\n(StateFlow&lt;PracticeUiState&gt;)"]
+        AuthVM["AuthViewModel\n(StateFlow&lt;AuthState&gt;)"]
+    end
+
+    subgraph Repo ["Domain & Repository Layer"]
+        ChatRepo["FirestoreChatRepository"]
+        QuizRepo["QuizRepository"]
+        GamificationRepo["GamificationRepository"]
+    end
+
+    subgraph Remote ["Remote Infrastructure & Cloud"]
+        Proxy["Backend AI Proxy\n(Cloudflare Worker / Express)"]
+        UpstreamAI["Upstream AI Provider\n(GPT / Gemini)"]
+        Firebase["Google Cloud Firebase\n(Auth & Firestore)"]
+    end
+
+    ChatScreen -->|User Actions| ChatVM
+    ChatVM -->|Immutable StateFlow| ChatScreen
+    PracticeScreen -->|Submit Quiz / Generate| PracticeVM
+    PracticeVM -->|Immutable StateFlow| PracticeScreen
+    HomeScreen -->|Refresh Stats| AuthVM
+    AuthVM -->|Immutable StateFlow| HomeScreen
+
+    ChatVM -->|Fetch / Persist History| ChatRepo
+    ChatVM -->|Stream Socratic Tokens| Proxy
+    PracticeVM -->|Fetch Curriculum Quizzes| QuizRepo
+    PracticeVM -->|Award Mastery XP| GamificationRepo
+    PracticeVM -->|Generate Quiz JSON| Proxy
+    AuthVM -->|Sync Level & XP| GamificationRepo
+
+    ChatRepo -->|Cloud Document Sync| Firebase
+    QuizRepo -->|Custom Quizzes Store| Firebase
+    GamificationRepo -->|Atomic Increment| Firebase
+
+    Proxy -->|Bearer Token & Secret Key| UpstreamAI
+    UpstreamAI -->|SSE Event Stream| Proxy
 ```
 
 | Technology | Purpose |
@@ -125,10 +168,10 @@ Study Mentor is architected following Google's recommended **Modern Android Deve
 | **Jetpack Compose (BOM 2026.02.01)** | Declarative UI toolkit with Material Design 3 guidelines |
 | **AndroidX CameraX (1.4.1)** | Lifecycle-aware camera hardware preview and high-speed image capture |
 | **Navigation Compose (2.8.5)** | Single-activity backstack and animated tab navigation |
-| **Firebase Auth & Cloud Firestore** | Secure user authentication and distributed document database |
+| **Firebase Auth & Cloud Firestore** | User authentication and real-time cloud document database |
 | **Kotlin Coroutines & StateFlow** | Asynchronous background processing and unidirectional reactive state |
-| **Custom SSE HttpURLConnection** | Resilient Server-Sent Events parser delivering real-time streaming tokens |
-| **Coil Compose (2.6.0)** | Asynchronous image decoding, disk caching, and memory cache management |
+| **Custom SSE HttpURLConnection** | Low-latency Server-Sent Events parser delivering real-time streaming tokens |
+| **Coil Compose (2.6.0)** | Asynchronous image decoding, memory caching, and disk cache management |
 | **AndroidX ExifInterface** | High-precision sensor rotation mapping for camera captures |
 
 ---
@@ -141,28 +184,29 @@ Study_Mentor_BTEC_BestCode/
 │   ├── build.gradle.kts                # Application build config & dependencies
 │   ├── google-services.json            # Firebase configuration file
 │   └── src/main/
-│       ├── AndroidManifest.xml         # Permissions (Camera, Internet) & Activity
+│       ├── AndroidManifest.xml         # Permissions, cleartext config & MainActivity
+│       ├── res/xml/
+│       │   └── network_security_config.xml # Cleartext & trusted certificate anchors
 │       └── java/com/example/study_mentor/
 │           ├── MainActivity.kt         # Edge-to-Edge root Activity
-│           ├── OpenAIApiClient.kt      # SSE Streaming HTTP Network Client
-│           ├── GeminiApiClient.kt      # Multimodal fallback interface
+│           ├── OpenAIApiClient.kt      # SSE Streaming client with Socratic prompt & timeouts
 │           ├── data/                   # Data Models & Repositories
-│           │   ├── ChatMessage.kt      # Chat history model
+│           │   ├── ChatModels.kt       # Chat message & session schemas
 │           │   ├── GamificationModels  # RPG level math & UserStats
 │           │   ├── GamificationRepo    # Firestore XP increment logic
 │           │   ├── FirestoreChatRepo   # Cloud session persistence
-│           │   ├── QuizModels.kt       # Multi-choice & short-answer schemas
-│           │   └── QuizRepository.kt   # Practice curriculum modules
+│           │   ├── QuizModels.kt       # Multi-choice schemas & mastery XP math
+│           │   └── QuizRepository.kt   # THPT curriculum modules & Firestore custom quizzes
 │           └── ui/                     # Presentation Layer (Compose)
 │               ├── MainScreen.kt       # Bottom navigation & RGB glowing FAB
 │               ├── CameraScannerScreen # Live CameraX & Resizable Crop Viewfinder
-│               ├── HomeScreen.kt       # Level progression dashboard & banners
-│               ├── PracticeScreen.kt   # Available quizzes catalog
-│               ├── QuizTakingScreen.kt # Interactive test engine
-│               ├── LibraryScreen.kt    # Past session replay list
-│               ├── ProfileScreen.kt    # User stats & avatar selector
+│               ├── HomeScreen.kt       # Socratic greeting, suggestions & XP dashboard
+│               ├── PracticeScreen.kt   # THPT quizzes & AI custom quiz builder
+│               ├── QuizTakingScreen.kt # Interactive test engine with mastery bonuses
+│               ├── LibraryScreen.kt    # Past session replay list with subject tags
+│               ├── ProfileScreen.kt    # User stats, rank title & avatar selector
 │               ├── AuthViewModel.kt    # Firebase auth & stats observer
-│               ├── ChatViewModel.kt    # Camera capture & AI chat streaming
+│               ├── ChatViewModel.kt    # Socratic prompt builder & AI stream manager
 │               └── theme/              # Color palette, Shapes, & Typography
 ├── art/                                # Project branding & screenshot assets
 ├── build.gradle.kts                    # Root build configuration
@@ -187,7 +231,7 @@ Study_Mentor_BTEC_BestCode/
    cd Study_Mentor_BTEC_BestCode
    ```
 
-2. **Configure API Secrets**:
+2. **Configure API Secrets (`local.properties`)**:
    Create or open the `local.properties` file in the project's root folder and append your AI API Key:
    ```properties
    ## Local Environment Configurations
@@ -197,7 +241,7 @@ Study_Mentor_BTEC_BestCode/
    AI_API_KEY=sk-your-actual-api-key-here
    ```
 
-3. **Add Firebase Credentials**:
+3. **Add Firebase Credentials (`google-services.json`)**:
    - Create a project on the [Firebase Console](https://console.firebase.google.com/).
    - Add an Android App with package name: `com.example.study_mentor`.
    - Download the generated `google-services.json` and place it in the `app/` folder:
@@ -218,16 +262,61 @@ Study_Mentor_BTEC_BestCode/
 
 ---
 
-## 🔐 Environment & Secrets Configuration
+## 🔐 Environment & Security Architecture (P-09 Compliance)
 
-To protect proprietary keys from leaking into version control, Study Mentor employs a multi-tiered security pattern:
-- **Git Ignored Keys**: `local.properties` and private credentials are excluded via `.gitignore`.
-- **Gradle Secrets Injection**: During the build step, Gradle parses `local.properties` and injects `AI_API_KEY` into `BuildConfig` at compile-time:
+To satisfy strict security criteria and prevent malicious extraction of proprietary credentials:
+- **Zero Raw AI API Keys in the Client APK**: Reverse engineering the compiled APK (`.apk` decompiled via `jadx` or `apktool`) reveals **zero raw provider API keys**.
+- **Backend AI Proxy Pattern**: The client application communicates with a secure server-side proxy endpoint configured via `BuildConfig.AI_PROXY_BASE_URL` (located in [`/backend-proxy`](backend-proxy/)).
+- **Authenticated Request Authorization**: When a student is signed in, `OpenAIApiClient` automatically resolves their current Firebase ID Token:
   ```kotlin
-  buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
+  FirebaseAuth.getInstance().currentUser?.getIdToken(false)?.await()?.token
   ```
-- **Runtime Authorization**: The custom client reads `BuildConfig.AI_API_KEY` directly when constructing the `Authorization: Bearer <TOKEN>` header.
+  and attaches it in the request header (`Authorization: Bearer <idToken>`).
+- **Server-Side Secret Injection**: The backend proxy validates the caller, injects the secret `AI_API_KEY` from isolated server environment variables, and streams real-time SSE tokens back to the Android client.
+- **Local Environment Configuration**:
+  In `local.properties`:
+  ```properties
+  # Base URL pointing to your deployed backend proxy or local emulator proxy
+  AI_PROXY_BASE_URL=https://study-mentor-proxy.workers.dev/v1/chat/completions
+  ```
 
 ---
-</div>
 
+## 🧪 Unit Testing & UDF State Verification
+
+The codebase includes automated unit test suites in `app/src/test/` to verify Unidirectional Data Flow, immutable state transitions, and pedagogical calculation math:
+- **`ChatViewModelTest`**: Verifies initial state purity, subject filter toggle logic, input text buffering, and incremental token streaming into `ChatUiState`.
+- **`PracticeViewModelTest`**: Verifies reactive quiz loading, `calculateEarnedXp` with 100% (+20%) and 80% (+10%) mastery bonuses, and dynamic AI custom quiz creation UDF state transitions (`isGeneratingQuiz` loading -> false).
+- **`AiQuizGeneratorUnitTest`**: Validates JSON fence sanitization, conversational preamble stripping, and dynamic question math.
+
+### Executing Unit Tests via CLI
+Run all unit tests with the standard Gradle command:
+```bash
+./gradlew testDebugUnitTest
+```
+
+---
+
+## 🚀 Future Roadmap (Post-Competition)
+
+The features listed below are architected for our post-competition enterprise and institutional expansion, keeping the core competition demo 100% focused on verified, rock-solid functionality:
+
+1. **Automated Parental Consent & COPPA Verification Portal**:
+   - Web-based and mobile SMS-linked parent dashboard to approve AI study usage, view aggregate study hours, and monitor curriculum progress without exposing private chat details.
+2. **Interactive Student Onboarding & Diagnostic Placement**:
+   - Initial multi-subject assessment test upon first launch to calibrate student skill baseline and automatically recommend tailored study tracks.
+3. **Peer-to-Peer Study Rooms & Teacher Classroom Management**:
+   - Real-time collaborative Socratic rooms where students can work through exam modules together, with teacher dashboards to assign curriculum-aligned AI quizzes.
+4. **Offline Local LLM Fallback (Mobile On-Device Inference)**:
+   - On-device lightweight quantized SLM (e.g., Gemma 2B via MediaPipe) for basic hint generation and formula lookups when operating completely offline without cellular reception.
+
+---
+
+## 🏆 Best Coder 2026 Competitive Highlights
+
+- **Pedagogy First (P-02)**: Eliminates academic shortcutting by enforcing the Socratic 3-Stage scaffolding.
+- **Curriculum Alignment (P-03)**: Focused specifically on Vietnamese High School Graduation Exam (Toán 12, Lý, Hóa, Sinh, Văn, Sử) competencies.
+- **Hardware-Accelerated UX (P-04)**: Resizable gesture-driven viewfinder crop over live CameraX feed with instant ROI sub-sampling.
+- **Continuous Retention Loop (P-13)**: RPG leveling curve paired with +20% accuracy mastery bonuses, making daily exam preparation engaging and motivating.
+
+---

@@ -12,14 +12,18 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -86,6 +90,7 @@ fun PracticeScreen(
     onNavigateToSignIn: () -> Unit = {},
     viewModel: PracticeViewModel = viewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     val quizzes by viewModel.quizzes.collectAsState()
     val isGenerating by viewModel.isGeneratingQuiz.collectAsState()
 
@@ -145,14 +150,14 @@ fun PracticeScreen(
             item {
                 Column {
                     Text(
-                        text = "Daily Practice",
+                        text = "Daily Practice & Assessments",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Test your knowledge and level up your skills",
+                        text = "Practice curriculum topics, sharpen problem-solving skills, and earn XP",
                         style = MaterialTheme.typography.bodyLarge,
                         color = Color.Gray
                     )
@@ -250,7 +255,7 @@ fun PracticeScreen(
             item {
                 Column {
                     Text(
-                        text = "System Challenges",
+                        text = "Standard Curriculum Challenges",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
@@ -344,29 +349,36 @@ fun PracticeScreen(
     // Modal Bottom Sheet to configure custom quiz preferences
     if (showBottomSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
+            onDismissRequest = {
+                viewModel.resetGenerationStatus()
+                showBottomSheet = false
+            },
             sheetState = sheetState,
             containerColor = Color.White,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             AiQuizBottomSheetContent(
+                uiState = uiState,
                 onDismiss = {
                     coroutineScope.launch {
                         sheetState.hide()
+                        viewModel.resetGenerationStatus()
                         showBottomSheet = false
                     }
                 },
                 onGenerate = { topic, count, type, language, showInstantFeedback ->
-                    coroutineScope.launch {
-                        sheetState.hide()
-                        showBottomSheet = false
-                    }
                     viewModel.generateCustomQuiz(
                         topic = topic,
                         count = count,
                         type = type,
                         language = language,
-                        showInstantFeedback = showInstantFeedback
+                        showInstantFeedback = showInstantFeedback,
+                        onSuccess = {
+                            coroutineScope.launch {
+                                sheetState.hide()
+                                showBottomSheet = false
+                            }
+                        }
                     )
                 }
             )
@@ -547,6 +559,7 @@ fun AiQuizGeneratorCard(
  */
 @Composable
 fun AiQuizBottomSheetContent(
+    uiState: PracticeUiState = PracticeUiState(),
     onDismiss: () -> Unit,
     onGenerate: (topic: String, count: Int, type: String, language: String, showInstantFeedback: Boolean) -> Unit
 ) {
@@ -557,361 +570,429 @@ fun AiQuizBottomSheetContent(
     var showInstantFeedback by remember { mutableStateOf(true) }
 
     val topicSuggestions = listOf(
-        "History of Vietnam",
-        "Algebra & Equations",
-        "World Geography",
-        "Biology & Cells",
-        "English Grammar"
+        "Calculus & Functions",
+        "Harmonic Motion & Waves",
+        "Organic Chemistry & Esters",
+        "Genetics & Heredity",
+        "World History",
+        "Grammar & Reading Comprehension"
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .imePadding()
+            .navigationBarsPadding()
     ) {
-        // Sheet Header
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        // Scrollable content area for quiz configuration options
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFEEF2FF),
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AutoAwesome,
-                    contentDescription = null,
-                    tint = PrimaryBlue,
-                    modifier = Modifier.padding(10.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = "AI Custom Quiz Generator",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Customize your AI study session",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
-            }
-        }
-
-        // 1. Topic Input
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Topic or Subject *",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            OutlinedTextField(
-                value = topic,
-                onValueChange = { topic = it },
-                placeholder = { Text("e.g., History of Vietnam, Algebra, Photosynthesis") },
-                singleLine = true,
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.School,
-                        contentDescription = null,
-                        tint = PrimaryBlue
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryBlue,
-                    unfocusedBorderColor = Color(0xFFE2E8F0),
-                    focusedContainerColor = BackgroundOffWhite,
-                    unfocusedContainerColor = BackgroundOffWhite
-                )
-            )
-
-            // Topic Suggestion Chips
+            // Sheet Header
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                topicSuggestions.forEach { suggestion ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (topic == suggestion) Color(0xFFE0E7FF) else BackgroundOffWhite,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (topic == suggestion) PrimaryBlue else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier.clickable { topic = suggestion }
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFEEF2FF),
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        tint = PrimaryBlue,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "AI Custom Quiz Generator",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Customize your AI study session",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            // Inline Error Banner with Retry Button
+            val errorMessage = (uiState.generationStatus as? QuizGenerationStatus.Error)?.message
+                ?: uiState.errorMessage
+            if (!errorMessage.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFEF2F2),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = suggestion,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (topic == suggestion) PrimaryBlue else Color.DarkGray,
-                            fontWeight = if (topic == suggestion) FontWeight.Bold else FontWeight.Normal,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                            Text(
+                                text = "⚠️ Generation Failed",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color(0xFFB91C1C)
+                            )
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF7F1D1D)
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                if (topic.isNotBlank()) {
+                                    onGenerate(topic.trim(), questionCount, questionType, language, showInstantFeedback)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("Retry", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             }
-        }
 
-        // 2. Number of Questions & Dynamic XP Display
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // 1. Topic Input
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "Number of Questions",
+                    text = "Topic or Subject *",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Text(
-                    text = "Award: +${questionCount * 20} XP",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFFD97706)
+
+                OutlinedTextField(
+                    value = topic,
+                    onValueChange = { topic = it },
+                    placeholder = { Text("e.g., Quadratic Equations, Wave Optics, Organic Chemistry...") },
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.School,
+                            contentDescription = null,
+                            tint = PrimaryBlue
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryBlue,
+                        unfocusedBorderColor = Color(0xFFE2E8F0),
+                        focusedContainerColor = BackgroundOffWhite,
+                        unfocusedContainerColor = BackgroundOffWhite
+                    )
                 )
+
+                // Topic Suggestion Chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    topicSuggestions.forEach { suggestion ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (topic == suggestion) Color(0xFFE0E7FF) else BackgroundOffWhite,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (topic == suggestion) PrimaryBlue else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier.clickable { topic = suggestion }
+                        ) {
+                            Text(
+                                text = suggestion,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (topic == suggestion) PrimaryBlue else Color.DarkGray,
+                                fontWeight = if (topic == suggestion) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                listOf(5 to "100 Max XP", 10 to "200 Max XP").forEach { (count, xpTag) ->
-                    val isSelected = questionCount == count
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.5.dp,
-                            if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { questionCount = count }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // 2. Number of Questions & Dynamic XP Display
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Number of Questions",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Award: +${questionCount * 20} XP",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFD97706)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    listOf(5 to "100 Max XP", 10 to "200 Max XP").forEach { (count, xpTag) ->
+                        val isSelected = questionCount == count
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { questionCount = count }
                         ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { questionCount = count },
-                                colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
-                            )
-                            Column {
-                                Text(
-                                    text = "$count Questions",
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (isSelected) PrimaryBlue else Color.DarkGray
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { questionCount = count },
+                                    colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
+                                )
+                                Column {
+                                    Text(
+                                        text = "$count Questions",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isSelected) PrimaryBlue else Color.DarkGray
+                                    )
+                                    Text(
+                                        text = xpTag,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Question Type Selector
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Question Type",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    listOf(
+                        "MULTIPLE_CHOICE" to "Multiple Choice",
+                        "SHORT_ANSWER" to "Short Answer"
+                    ).forEach { (typeKey, label) ->
+                        val isSelected = questionType == typeKey
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { questionType = typeKey }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { questionType = typeKey },
+                                    colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
                                 )
                                 Text(
-                                    text = xpTag,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.Gray
+                                    text = label,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isSelected) PrimaryBlue else Color.DarkGray
                                 )
                             }
                         }
                     }
                 }
             }
-        }
 
-        // 3. Question Type Selector
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Question Type",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                listOf(
-                    "MULTIPLE_CHOICE" to "Multiple Choice",
-                    "SHORT_ANSWER" to "Short Answer"
-                ).forEach { (typeKey, label) ->
-                    val isSelected = questionType == typeKey
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.5.dp,
-                            if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { questionType = typeKey }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { questionType = typeKey },
-                                colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
-                            )
-                            Text(
-                                text = label,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isSelected) PrimaryBlue else Color.DarkGray
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Language Selector
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Language,
-                    contentDescription = null,
-                    tint = PrimaryBlue,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = "Quiz Language",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                listOf("English", "Vietnamese").forEach { lang ->
-                    val isSelected = language == lang
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.5.dp,
-                            if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { language = lang }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = { language = lang },
-                                colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
-                            )
-                            Text(
-                                text = if (lang == "Vietnamese") "Tiếng Việt" else "English",
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (isSelected) PrimaryBlue else Color.DarkGray
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 5. Instant Feedback Configuration Row
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = BackgroundOffWhite,
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
+            // 4. Language Selector
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = null,
+                        tint = PrimaryBlue,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Text(
-                        text = "Show instant correct/incorrect feedback",
+                        text = "Quiz Language",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Text(
-                        text = if (showInstantFeedback) "Reveal answers right after tapping" else "Keep answers hidden until completion",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    listOf("English", "Vietnamese").forEach { lang ->
+                        val isSelected = language == lang
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) Color(0xFFEEF2FF) else BackgroundOffWhite,
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.5.dp,
+                                if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { language = lang }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = { language = lang },
+                                    colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue)
+                                )
+                                Text(
+                                    text = if (lang == "Vietnamese") "Tiếng Việt" else "English",
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isSelected) PrimaryBlue else Color.DarkGray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Instant Feedback Configuration Row
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = BackgroundOffWhite,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    ) {
+                        Text(
+                            text = "Show instant correct/incorrect feedback",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (showInstantFeedback) "Reveal answers right after tapping" else "Keep answers hidden until completion",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = showInstantFeedback,
+                        onCheckedChange = { showInstantFeedback = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = PrimaryBlue
+                        )
                     )
                 }
-                Switch(
-                    checked = showInstantFeedback,
-                    onCheckedChange = { showInstantFeedback = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = PrimaryBlue
-                    )
-                )
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // 6. Submit "Generate" Button
-        Button(
-            onClick = {
-                if (topic.isNotBlank()) {
-                    onGenerate(topic.trim(), questionCount, questionType, language, showInstantFeedback)
-                }
-            },
-            enabled = topic.isNotBlank(),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = PrimaryBlue,
-                disabledContainerColor = Color(0xFFCBD5E1)
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
+        // Pinned Bottom Button Container (Always visible & accessible)
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.White,
+            shadowElevation = 8.dp
         ) {
-            Icon(
-                imageVector = Icons.Filled.AutoAwesome,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Generate Quiz (+${questionCount * 20} Max XP)",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                // 6. Submit "Generate" Button
+                Button(
+                    onClick = {
+                        if (topic.isNotBlank()) {
+                            onGenerate(topic.trim(), questionCount, questionType, language, showInstantFeedback)
+                        }
+                    },
+                    enabled = topic.isNotBlank(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryBlue,
+                        disabledContainerColor = Color(0xFFCBD5E1)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Generate Quiz (+${questionCount * 20} Max XP)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
         }
     }
 }

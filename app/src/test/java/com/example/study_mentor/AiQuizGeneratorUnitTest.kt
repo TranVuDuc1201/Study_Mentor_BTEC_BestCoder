@@ -69,17 +69,17 @@ class AiQuizGeneratorUnitTest {
         val count10Xp = 10 * 20
         assertEquals(200, count10Xp)
 
-        // Full score 5/5 on 100 XP quiz
+        // Full score 5/5 on 100 XP quiz (with +20% perfect score mastery bonus = 120 XP)
         val fullEarned5 = calculateEarnedXp(correctAnswers = 5, totalQuestions = 5, maxXp = 100)
-        assertEquals(100, fullEarned5)
+        assertEquals(120, fullEarned5)
 
         // Partial score 3/5 on 100 XP quiz
         val partialEarned = calculateEarnedXp(correctAnswers = 3, totalQuestions = 5, maxXp = 100)
         assertEquals(60, partialEarned)
 
-        // Full score 10/10 on 200 XP quiz
+        // Full score 10/10 on 200 XP quiz (with +20% perfect score mastery bonus = 240 XP)
         val fullEarned10 = calculateEarnedXp(correctAnswers = 10, totalQuestions = 10, maxXp = 200)
-        assertEquals(200, fullEarned10)
+        assertEquals(240, fullEarned10)
     }
 
     @Test

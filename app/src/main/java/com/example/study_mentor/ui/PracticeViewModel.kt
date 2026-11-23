@@ -3,6 +3,7 @@ package com.example.study_mentor.ui
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.study_mentor.AiServiceClient
 import com.example.study_mentor.OpenAIApiClient
 import com.example.study_mentor.data.GamificationRepository
 import com.example.study_mentor.data.Question
@@ -19,9 +20,30 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * Represents the distinct states of AI Quiz Generation following strict UDF.
+ */
+sealed interface QuizGenerationStatus {
+    object Idle : QuizGenerationStatus
+    object Generating : QuizGenerationStatus
+    data class Success(val quiz: Quiz) : QuizGenerationStatus
+    data class Error(val message: String) : QuizGenerationStatus
+}
+
+/**
+ * Immutable UI State representing the Practice screen.
+ */
+data class PracticeUiState(
+    val quizzes: List<Quiz> = emptyList(),
+    val isGeneratingQuiz: Boolean = false,
+    val generationStatus: QuizGenerationStatus = QuizGenerationStatus.Idle,
+    val errorMessage: String? = null
+)
 
 /**
  * Event emitted when a user finishes a quiz or earns XP.
@@ -34,11 +56,13 @@ data class XpRewardEvent(
 
 /**
  * ViewModel managing practice quizzes, dynamic question models, and XP reward calculations.
+ * Adheres strictly to Unidirectional Data Flow (UDF) with immutable StateFlow transitions.
  */
 class PracticeViewModel(
     private val quizRepository: QuizRepository = QuizRepositoryImpl(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val gamificationRepository: GamificationRepository = GamificationRepository()
+    private val gamificationRepository: GamificationRepository = GamificationRepository(),
+    private val aiServiceClient: AiServiceClient = OpenAIApiClient
 ) : ViewModel() {
 
     companion object {
@@ -51,6 +75,10 @@ class PracticeViewModel(
         const val MULTIPLIER_HARD = 2.0f
     }
 
+    private val _uiState = MutableStateFlow(PracticeUiState())
+    val uiState: StateFlow<PracticeUiState> = _uiState.asStateFlow()
+
+    // Backward-compatible delegated StateFlows
     private val _quizzes = MutableStateFlow<List<Quiz>>(emptyList())
     val quizzes: StateFlow<List<Quiz>> = _quizzes.asStateFlow()
 
@@ -102,7 +130,9 @@ class PracticeViewModel(
      * Merges user custom AI quizzes at the top, followed by standard curriculum quizzes.
      */
     private fun combineAndEmitQuizzes() {
-        _quizzes.value = userCustomQuizzes + systemQuizzes
+        val combined = userCustomQuizzes + systemQuizzes
+        _quizzes.value = combined
+        _uiState.update { it.copy(quizzes = combined) }
     }
 
     /**
@@ -115,6 +145,20 @@ class PracticeViewModel(
                 combineAndEmitQuizzes()
             }
         }
+    }
+
+    /**
+     * Retrieves an individual quiz by ID from local cache or fetches from QuizRepository/Firestore.
+     */
+    suspend fun getQuizById(quizId: String): Quiz? {
+        val cached = _quizzes.value.find { it.id == quizId }
+        if (cached != null) return cached
+        val remote = quizRepository.getQuizById(quizId)
+        if (remote != null) {
+            userCustomQuizzes = listOf(remote) + userCustomQuizzes.filter { it.id != remote.id }
+            combineAndEmitQuizzes()
+        }
+        return remote
     }
 
     /**
@@ -264,6 +308,17 @@ class PracticeViewModel(
      * @param onSuccess Callback invoked when generation and parsing succeed.
      * @param onError Callback invoked when an error occurs.
      */
+    /**
+     * Resets the quiz generation status back to Idle, dismissing inline error banners.
+     */
+    fun resetGenerationStatus() {
+        _uiState.update { it.copy(generationStatus = QuizGenerationStatus.Idle, errorMessage = null) }
+    }
+
+    /**
+     * Generates a custom quiz using structured outputs via OpenAIApiClient.
+     * Enforces strict schema definition and validates deserialization with kotlinx.serialization.
+     */
     fun generateCustomQuiz(
         topic: String,
         count: Int = 5,
@@ -276,6 +331,12 @@ class PracticeViewModel(
         val sanitizedTopic = topic.trim()
         if (sanitizedTopic.isBlank()) {
             val errorMsg = "Please enter a quiz topic."
+            _uiState.update {
+                it.copy(
+                    generationStatus = QuizGenerationStatus.Error(errorMsg),
+                    errorMessage = errorMsg
+                )
+            }
             viewModelScope.launch { _quizGenerationError.emit(errorMsg) }
             onError(errorMsg)
             return
@@ -283,56 +344,40 @@ class PracticeViewModel(
 
         val calculatedMaxXp = count * 20
         _isGeneratingQuiz.value = true
+        _uiState.update {
+            it.copy(
+                isGeneratingQuiz = true,
+                generationStatus = QuizGenerationStatus.Generating,
+                errorMessage = null
+            )
+        }
 
         val systemPrompt = """
             You are a strict educational assessment engine.
-            You MUST respond ONLY with a raw, valid JSON object conforming exactly to the requested schema.
-            DO NOT wrap your response in markdown code blocks like ```json or ```.
-            DO NOT include any introductory or conversational text, explanations, or notes.
-            The entire response must be valid JSON directly parseable by org.json.JSONObject.
+            Return an educational quiz matching the requested schema.
+            STRICT LANGUAGE CONTRACT:
+            - Respond strictly in $language for all question titles, text, options, and explanations.
+            - Ensure questions are pedagogically rigorous, curriculum-aligned, and accurate.
         """.trimIndent()
 
         val userPrompt = """
             Generate an educational quiz on the topic: "$sanitizedTopic".
-            
-            Parameters:
-            - Number of questions: $count
-            - Question type: $type (Must be MULTIPLE_CHOICE or SHORT_ANSWER)
-            - Language: $language
-            - Maximum XP: $calculatedMaxXp
-            
-            Exact JSON structure required:
-            {
-              "id": "ai_${System.currentTimeMillis()}",
-              "title": "<Concise Quiz Title in $language>",
-              "description": "<Engaging 1-sentence description in $language>",
-              "maxXp": $calculatedMaxXp,
-              "questions": [
-                {
-                  "id": "q1",
-                  "text": "<Question text in $language>",
-                  "type": "$type",
-                  "options": ["<Option 1>", "<Option 2>", "<Option 3>", "<Option 4>"],
-                  "correctAnswer": "<Exact matching string of the correct choice>"
-                }
-              ]
-            }
-
-            Critical rules:
-            1. Generate exactly $count questions.
-            2. For MULTIPLE_CHOICE: "options" must have exactly 4 choices, and "correctAnswer" must match one of the choices exactly.
-            3. For SHORT_ANSWER: set "options": null and provide a concise, unambiguous answer in "correctAnswer".
-            4. All text (title, description, questions, options, answers) must be written in $language.
-            5. Output ONLY the raw JSON object.
+            Number of questions: $count
+            Question type: $type (MULTIPLE_CHOICE or SHORT_ANSWER)
+            Language: $language
+            Maximum XP: $calculatedMaxXp
         """.trimIndent()
 
         viewModelScope.launch {
             try {
                 val fullResponse = StringBuilder()
-                OpenAIApiClient.askQuestion(
+                val quizSchema = OpenAIApiClient.buildQuizJsonSchema()
+
+                aiServiceClient.askQuestion(
                     prompt = userPrompt,
                     systemPrompt = systemPrompt,
-                    maxTokens = 2500
+                    maxTokens = 2500,
+                    responseJsonSchema = quizSchema
                 ).collect { chunk ->
                     fullResponse.append(chunk)
                 }
@@ -342,20 +387,20 @@ class PracticeViewModel(
                     throw IllegalStateException("The AI model returned an empty response.")
                 }
 
-                val parsedQuiz = parseQuizFromJson(
-                    rawResponse = rawResponseStr,
+                val currentUid = auth.currentUser?.uid
+
+                // Safely deserialize via QuizRepository using kotlinx.serialization
+                val parseResult = quizRepository.parseStructuredQuizJson(
+                    rawJson = rawResponseStr,
                     fallbackTopic = sanitizedTopic,
                     count = count,
-                    defaultType = type
-                )
-
-                // Attach current user's UID to creatorId and set showInstantFeedback preference
-                val currentUid = auth.currentUser?.uid
-                val newQuiz = parsedQuiz.copy(
+                    type = type,
+                    language = language,
                     creatorId = currentUid,
-                    isAiGenerated = true,
                     showInstantFeedback = showInstantFeedback
                 )
+
+                val newQuiz = parseResult.getOrThrow()
 
                 // Save to Firestore BEFORE updating the local UI state
                 quizRepository.saveCustomQuiz(newQuiz)
@@ -365,13 +410,27 @@ class PracticeViewModel(
                 combineAndEmitQuizzes()
 
                 _isGeneratingQuiz.value = false
+                _uiState.update {
+                    it.copy(
+                        isGeneratingQuiz = false,
+                        generationStatus = QuizGenerationStatus.Success(newQuiz),
+                        errorMessage = null
+                    )
+                }
                 _quizGenerationSuccess.emit(newQuiz)
                 onSuccess(newQuiz)
                 Log.d(TAG, "Successfully created and persisted custom AI quiz: ${newQuiz.title} for user $currentUid")
             } catch (e: Exception) {
                 Log.e(TAG, "Error generating custom AI quiz", e)
                 _isGeneratingQuiz.value = false
-                val errorMsg = e.localizedMessage ?: "Failed to generate quiz. Please try again."
+                val errorMsg = "Couldn't generate the quiz cleanly. Please try again."
+                _uiState.update {
+                    it.copy(
+                        isGeneratingQuiz = false,
+                        generationStatus = QuizGenerationStatus.Error(errorMsg),
+                        errorMessage = errorMsg
+                    )
+                }
                 _quizGenerationError.emit(errorMsg)
                 onError(errorMsg)
             }

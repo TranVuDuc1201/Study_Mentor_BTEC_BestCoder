@@ -121,6 +121,12 @@ fun QuizTakingScreen(
         quizzes.find { it.id == quizId }
     }
 
+    androidx.compose.runtime.LaunchedEffect(quizId) {
+        if (quiz == null) {
+            viewModel.getQuizById(quizId)
+        }
+    }
+
     Scaffold(
         containerColor = BackgroundOffWhite
     ) { innerPadding ->

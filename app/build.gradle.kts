@@ -4,18 +4,21 @@ import java.io.FileInputStream
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     // Apply the Secrets Gradle Plugin to expose GEMINI_API_KEY via BuildConfig
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
 }
 
-// Đọc file local.properties thủ công để đảm bảo lấy được API Key
+// Read optional AI_PROXY_BASE_URL from local.properties (defaults to secure backend proxy)
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(FileInputStream(localPropertiesFile))
 }
-val aiApiKey = localProperties.getProperty("AI_API_KEY") ?: ""
+// Default to the secure backend proxy endpoint; NO raw provider AI_API_KEY is embedded into APK
+val aiProxyBaseUrl = localProperties.getProperty("AI_PROXY_BASE_URL") 
+    ?: "https://study-mentor-proxy.workers.dev/v1/chat/completions"
 
 android {
     namespace = "com.example.study_mentor"
@@ -32,8 +35,12 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Gán API Key đã đọc được vào BuildConfig một cách an toàn
-        buildConfigField("String", "AI_API_KEY", "\"$aiApiKey\"")
+        // Expose Backend Proxy Base URL ONLY - Zero raw provider API keys in client APK
+        buildConfigField("String", "AI_PROXY_BASE_URL", "\"$aiProxyBaseUrl\"")
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     buildTypes {
@@ -66,6 +73,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.firebase.auth)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    testImplementation("io.mockk:mockk:1.13.10")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -78,6 +88,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // OpenAI Kotlin client (unofficial, by Mouaad Aallam) — works with any sk- API key
     implementation("com.aallam.openai:openai-client:3.8.2")

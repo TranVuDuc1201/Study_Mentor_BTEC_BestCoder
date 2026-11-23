@@ -136,7 +136,7 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Ready to level up your study skills today?",
+                    text = "Your Socratic AI tutor is ready to help you learn!",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -216,7 +216,7 @@ fun HomeScreen(
                     onValueChange = { searchQuery = it },
                     placeholder = {
                         Text(
-                            text = "Ask anything about your homework...",
+                            text = "Ask for a hint or step-by-step guidance...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.Gray
                         )
@@ -275,7 +275,7 @@ fun HomeScreen(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Ask",
+                            text = "Hỏi AI",
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             fontSize = 14.sp
@@ -390,7 +390,7 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (selectedSubject == "All") "Try asking these" else "Try asking in $selectedSubject",
+                    text = if (selectedSubject == "All") "Recommended Study Questions" else "Recommended in $selectedSubject",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground

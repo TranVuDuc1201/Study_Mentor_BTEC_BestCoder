@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.util.Calendar
 
 /**
@@ -37,69 +38,69 @@ data class RecentQuestion(
  */
 class HomeViewModel : ViewModel() {
 
-    val subjects = listOf("All", "Math", "Science", "History", "Literature")
+    val subjects = listOf("All", "Math", "Physics", "Chemistry", "Biology", "Literature")
 
     private val _selectedSubject = MutableStateFlow("All")
     val selectedSubject: StateFlow<String> = _selectedSubject.asStateFlow()
 
     private val allSuggestions = listOf(
         QuestionSuggestion(
-            question = "How do I solve quadratic equations using the quadratic formula?",
+            question = "Can you give me a hint on determining function monotonicity with a parameter?",
             subject = "Math",
             icon = Icons.Outlined.Calculate
         ),
         QuestionSuggestion(
-            question = "What is the Pythagorean theorem and how is it used?",
+            question = "How do I find the angle between two planes in 3D geometry step-by-step?",
             subject = "Math",
             icon = Icons.Outlined.Calculate
         ),
         QuestionSuggestion(
-            question = "Can you explain derivative rules with simple examples?",
+            question = "How do I apply integration by parts to evaluate complex definite integrals?",
             subject = "Math",
             icon = Icons.Outlined.Calculate
         ),
         QuestionSuggestion(
-            question = "What is the function of mitochondria in animal and plant cells?",
-            subject = "Science",
+            question = "How do I analyze kinetic and potential energy graphs in simple harmonic motion?",
+            subject = "Physics",
             icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "Explain Newton's three laws of motion with real-life examples.",
-            subject = "Science",
+            question = "Guide me step-by-step on finding the phase difference in an AC series RLC circuit.",
+            subject = "Physics",
             icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "How does photosynthesis convert sunlight and CO2 into glucose?",
-            subject = "Science",
+            question = "What is the core concept behind the photoelectric effect and threshold frequency?",
+            subject = "Physics",
             icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "Explain the key causes and impact of the French Revolution.",
-            subject = "History",
-            icon = Icons.Outlined.HistoryEdu
+            question = "What is the key principle behind electron balance and mass conservation in redox reactions?",
+            subject = "Chemistry",
+            icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "What were the major turning points of World War II?",
-            subject = "History",
-            icon = Icons.Outlined.HistoryEdu
+            question = "How do I determine the molecular formula of a monofunctional ester from vapor density?",
+            subject = "Chemistry",
+            icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "Summarize the history and cultural impact of the ancient Silk Road.",
-            subject = "History",
-            icon = Icons.Outlined.HistoryEdu
+            question = "What are the core steps to solving Mendelian genetics and gene linkage problems?",
+            subject = "Biology",
+            icon = Icons.Outlined.Science
         ),
         QuestionSuggestion(
-            question = "Analyze the central themes and tragic conflict in Shakespeare's Hamlet.",
+            question = "Explain the molecular mechanism of transcription and translation in eukaryotic cells.",
+            subject = "Biology",
+            icon = Icons.Outlined.Science
+        ),
+        QuestionSuggestion(
+            question = "Give me an outline for analyzing thematic conflict and character arcs in literature.",
             subject = "Literature",
             icon = Icons.AutoMirrored.Outlined.MenuBook
         ),
         QuestionSuggestion(
-            question = "What are the common poetic devices and how are they used effectively?",
-            subject = "Literature",
-            icon = Icons.AutoMirrored.Outlined.MenuBook
-        ),
-        QuestionSuggestion(
-            question = "Compare and contrast Romanticism vs Realism in 19th-century literature.",
+            question = "What are effective steps to structure a persuasive argumentative essay?",
             subject = "Literature",
             icon = Icons.AutoMirrored.Outlined.MenuBook
         )
@@ -111,15 +112,15 @@ class HomeViewModel : ViewModel() {
         listOf(
             RecentQuestion(
                 id = "rq_1",
-                prompt = "How do I calculate the derivative of e^(2x) using chain rule?",
+                prompt = "How do I find vertical and horizontal asymptotes of y = (2x - 1)/(x + 1)?",
                 timeAgo = "2 hours ago",
                 subject = "Math"
             ),
             RecentQuestion(
                 id = "rq_2",
-                prompt = "What is the fundamental difference between mitosis and meiosis?",
+                prompt = "Guide me step-by-step on calculating fringe width in Young's double-slit experiment.",
                 timeAgo = "Yesterday",
-                subject = "Science"
+                subject = "Physics"
             )
         )
     )
@@ -129,7 +130,7 @@ class HomeViewModel : ViewModel() {
      * Updates currently active subject filter chip.
      */
     fun selectSubject(subject: String) {
-        _selectedSubject.value = subject
+        _selectedSubject.update { subject }
     }
 
     /**
@@ -140,8 +141,8 @@ class HomeViewModel : ViewModel() {
             // Show a diverse cross-section from each subject
             listOf(
                 allSuggestions.first { it.subject == "Math" },
-                allSuggestions.first { it.subject == "Science" },
-                allSuggestions.first { it.subject == "History" },
+                allSuggestions.first { it.subject == "Physics" },
+                allSuggestions.first { it.subject == "Chemistry" },
                 allSuggestions.first { it.subject == "Literature" }
             )
         } else {

@@ -99,16 +99,18 @@ private fun getLibrarySubjectConfig(session: ChatSession): LibrarySubjectConfig 
     val titleLower = session.title.lowercase().trim()
 
     return when {
-        effectiveSubject == "math" || titleLower.contains("math") || titleLower.contains("derivative") ||
+        effectiveSubject == "math" || effectiveSubject.contains("toán") || titleLower.contains("math") || titleLower.contains("toán") ||
+                titleLower.contains("derivative") || titleLower.contains("tích phân") || titleLower.contains("đạo hàm") ||
                 titleLower.contains("integral") || titleLower.contains("algebra") ||
-                titleLower.contains("equation") || titleLower.contains("solve") -> LibrarySubjectConfig(
+                titleLower.contains("hàm số") || titleLower.contains("equation") || titleLower.contains("solve") -> LibrarySubjectConfig(
             icon = Icons.Default.Calculate,
             primaryColor = Color(0xFF2563EB),     // Vibrant Royal Blue
             containerColor = Color(0xFFEFF6FF),   // Soft Blue Pastel
             label = "Math"
         )
 
-        effectiveSubject == "physics" || titleLower.contains("physics") || titleLower.contains("gravity") ||
+        effectiveSubject == "physics" || effectiveSubject.contains("lý") || titleLower.contains("physics") || titleLower.contains("vật lý") ||
+                titleLower.contains("gravity") || titleLower.contains("sóng") || titleLower.contains("dao động") ||
                 titleLower.contains("newton") || titleLower.contains("velocity") -> LibrarySubjectConfig(
             icon = Icons.Default.Science,
             primaryColor = Color(0xFF0D9488),     // Modern Teal Accent
@@ -116,7 +118,8 @@ private fun getLibrarySubjectConfig(session: ChatSession): LibrarySubjectConfig 
             label = "Physics"
         )
 
-        effectiveSubject == "chemistry" || titleLower.contains("chemistry") || titleLower.contains("molecule") ||
+        effectiveSubject == "chemistry" || effectiveSubject.contains("hóa") || titleLower.contains("chemistry") || titleLower.contains("hóa học") ||
+                titleLower.contains("molecule") || titleLower.contains("este") || titleLower.contains("axit") ||
                 titleLower.contains("atom") || titleLower.contains("reaction") || titleLower.contains("acid") -> LibrarySubjectConfig(
             icon = Icons.Default.Science,
             primaryColor = Color(0xFF059669),     // Forest Emerald
@@ -124,7 +127,16 @@ private fun getLibrarySubjectConfig(session: ChatSession): LibrarySubjectConfig 
             label = "Chemistry"
         )
 
-        effectiveSubject == "literature" || titleLower.contains("literature") || titleLower.contains("poem") ||
+        effectiveSubject == "biology" || effectiveSubject.contains("sinh") || titleLower.contains("biology") || titleLower.contains("sinh học") ||
+                titleLower.contains("gen") || titleLower.contains("di truyền") -> LibrarySubjectConfig(
+            icon = Icons.Default.Science,
+            primaryColor = Color(0xFF16A34A),     // Bright Green
+            containerColor = Color(0xFFDCFCE7),   // Mint Pastel
+            label = "Biology"
+        )
+
+        effectiveSubject == "literature" || effectiveSubject.contains("văn") || titleLower.contains("literature") || titleLower.contains("ngữ văn") ||
+                titleLower.contains("poem") || titleLower.contains("thơ") || titleLower.contains("nghị luận") ||
                 titleLower.contains("novel") || titleLower.contains("essay") -> LibrarySubjectConfig(
             icon = Icons.AutoMirrored.Filled.MenuBook,
             primaryColor = Color(0xFF7C3AED),     // Royal Violet
@@ -132,7 +144,8 @@ private fun getLibrarySubjectConfig(session: ChatSession): LibrarySubjectConfig 
             label = "Literature"
         )
 
-        effectiveSubject == "history" || titleLower.contains("history") || titleLower.contains("war") ||
+        effectiveSubject == "history" || effectiveSubject.contains("sử") || titleLower.contains("history") || titleLower.contains("lịch sử") ||
+                titleLower.contains("war") || titleLower.contains("chiến dịch") ||
                 titleLower.contains("revolution") -> LibrarySubjectConfig(
             icon = Icons.Default.HistoryEdu,
             primaryColor = Color(0xFFD97706),     // Warm Amber
@@ -714,8 +727,9 @@ fun PremiumChatSessionCard(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // Title (User Prompt) - Bold, 1 line, ellipsis
+                val cleanTitle = remember(session.title) { cleanAiFormatting(session.title.ifBlank { "Untitled Question" }) }
                 Text(
-                    text = session.title.ifBlank { "Untitled Question" },
+                    text = cleanTitle,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -726,10 +740,13 @@ fun PremiumChatSessionCard(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 // Subtitle (AI Response Preview) - Gray, 1 line, ellipsis
-                Text(
-                    text = session.lastResponsePreview.ifBlank {
+                val cleanPreview = remember(session.lastResponsePreview) {
+                    cleanAiFormatting(session.lastResponsePreview.ifBlank {
                         "Tap to open and view the AI mentor explanation..."
-                    },
+                    })
+                }
+                Text(
+                    text = cleanPreview,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.Gray,
                     maxLines = 1,

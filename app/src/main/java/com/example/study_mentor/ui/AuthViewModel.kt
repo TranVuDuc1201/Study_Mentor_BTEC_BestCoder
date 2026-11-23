@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -56,13 +57,13 @@ class AuthViewModel(
     init {
         // Observe current user changes
         val initialUser = auth.currentUser
-        _authState.value = _authState.value.copy(currentUser = initialUser)
+        _authState.update { it.copy(currentUser = initialUser) }
         observeUserStats(initialUser?.uid)
         observeUserProfile(initialUser?.uid)
 
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
-            _authState.value = _authState.value.copy(currentUser = user)
+            _authState.update { it.copy(currentUser = user) }
             observeUserStats(user?.uid)
             observeUserProfile(user?.uid)
         }
@@ -112,21 +113,21 @@ class AuthViewModel(
 
     fun login(email: String, password: String) {
         if (!validateEmail(email)) {
-            _authState.value = _authState.value.copy(errorMessage = "Invalid email format")
+            _authState.update { it.copy(errorMessage = "Invalid email format") }
             return
         }
         if (password.length < 6) {
-            _authState.value = _authState.value.copy(errorMessage = "Password must be at least 6 characters")
+            _authState.update { it.copy(errorMessage = "Password must be at least 6 characters") }
             return
         }
 
         viewModelScope.launch {
-            _authState.value = _authState.value.copy(isLoading = true, errorMessage = null)
+            _authState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
                 auth.signInWithEmailAndPassword(email, password).await()
-                _authState.value = _authState.value.copy(isLoading = false, errorMessage = null)
+                _authState.update { it.copy(isLoading = false, errorMessage = null) }
             } catch (e: Exception) {
-                _authState.value = _authState.value.copy(isLoading = false, errorMessage = e.localizedMessage)
+                _authState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
             }
         }
     }
@@ -343,12 +344,12 @@ class AuthViewModel(
         auth.signOut()
         profileJob?.cancel()
         _profileImageBase64.value = null
-        _authState.value = _authState.value.copy(currentUser = null, profileImageBase64 = null)
+        _authState.update { it.copy(currentUser = null, profileImageBase64 = null) }
         observeUserStats(null)
     }
 
     fun clearError() {
-        _authState.value = _authState.value.copy(errorMessage = null)
+        _authState.update { it.copy(errorMessage = null) }
     }
 
     private fun validateEmail(email: String): Boolean {
