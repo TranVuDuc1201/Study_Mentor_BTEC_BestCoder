@@ -445,7 +445,8 @@ class PracticeViewModel(
         rawResponse: String,
         fallbackTopic: String,
         count: Int,
-        defaultType: String
+        defaultType: String,
+        showInstantFeedback: Boolean = true
     ): Quiz {
         val sanitizedJson = cleanRawJsonResponse(rawResponse)
         val root = JSONObject(sanitizedJson)
@@ -492,6 +493,7 @@ class PracticeViewModel(
             }
 
             val correctAnswer = qObj.optString("correctAnswer", "")
+            val explanation = qObj.optString("explanation", "")
 
             questionList.add(
                 Question(
@@ -499,7 +501,8 @@ class PracticeViewModel(
                     text = qText,
                     type = qType,
                     options = options,
-                    correctAnswer = correctAnswer
+                    correctAnswer = correctAnswer,
+                    explanation = explanation
                 )
             )
         }
@@ -514,7 +517,8 @@ class PracticeViewModel(
             description = description,
             maxXp = maxXp,
             questions = questionList,
-            isAiGenerated = true
+            isAiGenerated = true,
+            showInstantFeedback = showInstantFeedback
         )
     }
 

@@ -85,10 +85,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -105,6 +107,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -141,6 +144,12 @@ enum class ViewfinderHandle {
  * Live CameraX Preview Composable using AndroidView to inflate PreviewView.
  * Binds CameraX Preview and ImageCapture use cases to the local lifecycle owner
  * with the default back-facing camera.
+ *
+ * Performance Fix:
+ * Uses PreviewView.ImplementationMode.PERFORMANCE (SurfaceView) for lower latency
+ * and hardware-accelerated preview rendering. Binding is performed strictly ONCE
+ * inside the AndroidView factory block (with no update block), preventing camera
+ * re-binding during recompositions.
  */
 @Composable
 fun CameraPreview(
@@ -151,12 +160,14 @@ fun CameraPreview(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val currentOnCameraBound by rememberUpdatedState(onCameraBound)
 
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             val previewView = PreviewView(ctx).apply {
-                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                // PERFORMANCE uses SurfaceView for lower latency and smoother camera rendering
+                implementationMode = PreviewView.ImplementationMode.PERFORMANCE
                 scaleType = PreviewView.ScaleType.FILL_CENTER
             }
 
@@ -175,7 +186,7 @@ fun CameraPreview(
                         preview,
                         imageCapture
                     )
-                    onCameraBound?.invoke(camera)
+                    currentOnCameraBound?.invoke(camera)
                 } catch (exc: Exception) {
                     Log.e("CameraScannerScreen", "CameraX binding failed", exc)
                 }
@@ -183,93 +194,146 @@ fun CameraPreview(
 
             previewView
         }
+        // Strictly omit the update block to guarantee zero re-binding on recompositions
     )
 }
 
 /**
  * Interactive Resizable Crop Frame Overlay.
- * Dims the screen outside the selection box with Color.Black.copy(alpha = 0.6f)
- * while punching a 100% transparent cutout in the center with BlendMode.Clear.
- * Allows dragging 4 corner handles/dots to freely resize the viewfinder frame.
+ *
+ * Performance & UX Optimizations:
+ * 1. Isolated Recomposition (Draw Phase Deferral): Reads crop rectangle state strictly inside the
+ *    DrawScope of Canvas and pointerInput(Unit) lambda. Dragging corners NEVER triggers recomposition
+ *    of CameraPreview, the camera viewfinder, or the bottom input panel.
+ * 2. Zero-Allocation Draw Loop: Pre-allocates and remembers CornerRadius, Stroke, and dimensions
+ *    outside Canvas to prevent GC pressure and stuttering.
+ * 3. 48.dp+ Touch Hit-Targets: Generous touch radius around each corner handle ensures effortless grabbing.
+ * 4. Strict Viewport Clamping: Clamps 4 corner coordinates within visible camera viewport bounds above
+ *    the bottom panel, with a minimum crop box size of 80.dp x 80.dp.
  */
 @Composable
-fun InteractiveViewfinderOverlay(
-    cropRect: Rect,
-    onCropRectChange: (Rect) -> Unit,
+fun InteractiveCropOverlay(
+    cropRectState: MutableState<Rect>,
     modifier: Modifier = Modifier,
     minWidth: Dp = 80.dp,
-    minHeight: Dp = 50.dp,
+    minHeight: Dp = 80.dp,
     dimColor: Color = Color.Black.copy(alpha = 0.6f),
-    strokeColor: Color = Color.White
+    strokeColor: Color = Color.White,
+    onCropRectChange: ((Rect) -> Unit)? = null
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val totalW = constraints.maxWidth.toFloat()
         val totalH = constraints.maxHeight.toFloat()
 
-        val minWidthPx = with(density) { minWidth.toPx() }
-        val minHeightPx = with(density) { minHeight.toPx() }
-        val handleTouchRadius = with(density) { 38.dp.toPx() }
+        // 1. Precompute dimensions and generous 48.dp hit-targets
+        val minWidthPx = remember(density, minWidth) { with(density) { minWidth.toPx() } }
+        val minHeightPx = remember(density, minHeight) { with(density) { minHeight.toPx() } }
+        val handleTouchRadius = remember(density) { with(density) { 48.dp.toPx() } }
 
-        val boundMinX = with(density) { 16.dp.toPx() }
-        val boundMaxX = totalW - with(density) { 16.dp.toPx() }
-        val boundMinY = with(density) { 70.dp.toPx() }
-        val boundMaxY = totalH - with(density) { 150.dp.toPx() }
+        val boundMinX = remember(density) { with(density) { 16.dp.toPx() } }
+        val boundMaxX = (totalW - boundMinX).coerceAtLeast(boundMinX + minWidthPx)
+        val boundMinY = remember(density) { with(density) { 72.dp.toPx() } }
+        val boundMaxY = (totalH - remember(density) { with(density) { 16.dp.toPx() } }).coerceAtLeast(boundMinY + minHeightPx)
+
+        // 2. Pre-allocate drawing styles & dimensions outside Canvas draw loop to achieve 0-allocations per frame
+        val cornerRadius = remember(density) { with(density) { CornerRadius(12.dp.toPx(), 12.dp.toPx()) } }
+        val borderStroke = remember(density) { with(density) { Stroke(width = 2.dp.toPx()) } }
+        val cornerLen = remember(density) { with(density) { 24.dp.toPx() } }
+        val cornerStrokeWidth = remember(density) { with(density) { 3.5.dp.toPx() } }
+        val dotRadius = remember(density) { with(density) { 5.dp.toPx() } }
+        val dotBorderRadius = remember(density) { with(density) { 8.dp.toPx() } }
+        val borderStrokeColor = remember(strokeColor) { strokeColor.copy(alpha = 0.85f) }
+
+        // Capture dynamic values for pointerInput(Unit) without restarting the gesture detector
+        val currentBoundMinX by rememberUpdatedState(boundMinX)
+        val currentBoundMaxX by rememberUpdatedState(boundMaxX)
+        val currentBoundMinY by rememberUpdatedState(boundMinY)
+        val currentBoundMaxY by rememberUpdatedState(boundMaxY)
+        val currentMinWidthPx by rememberUpdatedState(minWidthPx)
+        val currentMinHeightPx by rememberUpdatedState(minHeightPx)
+        val currentHandleTouchRadius by rememberUpdatedState(handleTouchRadius)
+        val currentOnCropRectChange by rememberUpdatedState(onCropRectChange)
 
         var activeHandle by remember { mutableStateOf(ViewfinderHandle.NONE) }
+
+        // Initialize default crop frame when viewport dimensions are measured
+        LaunchedEffect(totalW, totalH) {
+            if (totalW > 0f && totalH > 0f) {
+                val current = cropRectState.value
+                if (current == Rect.Zero || current.right > totalW || current.bottom > totalH) {
+                    val initW = (totalW * 0.82f).coerceIn(minWidthPx, boundMaxX - boundMinX)
+                    val initH = with(density) { 180.dp.toPx() }.coerceIn(minHeightPx, boundMaxY - boundMinY)
+                    val initL = (totalW - initW) / 2f
+                    val initT = (totalH - initH) / 2f
+                    val initialRect = Rect(initL, initT, initL + initW, initT + initH)
+                    cropRectState.value = initialRect
+                    onCropRectChange?.invoke(initialRect)
+                }
+            }
+        }
 
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                .pointerInput(cropRect, totalW, totalH) {
+                .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { startOffset ->
-                            val distTL = (startOffset - Offset(cropRect.left, cropRect.top)).getDistance()
-                            val distTR = (startOffset - Offset(cropRect.right, cropRect.top)).getDistance()
-                            val distBL = (startOffset - Offset(cropRect.left, cropRect.bottom)).getDistance()
-                            val distBR = (startOffset - Offset(cropRect.right, cropRect.bottom)).getDistance()
+                            val currentRect = cropRectState.value
+                            val distTL = (startOffset - Offset(currentRect.left, currentRect.top)).getDistance()
+                            val distTR = (startOffset - Offset(currentRect.right, currentRect.top)).getDistance()
+                            val distBL = (startOffset - Offset(currentRect.left, currentRect.bottom)).getDistance()
+                            val distBR = (startOffset - Offset(currentRect.right, currentRect.bottom)).getDistance()
 
+                            val minDist = minOf(distTL, minOf(distTR, minOf(distBL, distBR)))
                             activeHandle = when {
-                                distTL <= handleTouchRadius -> ViewfinderHandle.TOP_LEFT
-                                distTR <= handleTouchRadius -> ViewfinderHandle.TOP_RIGHT
-                                distBL <= handleTouchRadius -> ViewfinderHandle.BOTTOM_LEFT
-                                distBR <= handleTouchRadius -> ViewfinderHandle.BOTTOM_RIGHT
-                                cropRect.contains(startOffset) -> ViewfinderHandle.BODY
+                                minDist <= currentHandleTouchRadius -> {
+                                    when (minDist) {
+                                        distTL -> ViewfinderHandle.TOP_LEFT
+                                        distTR -> ViewfinderHandle.TOP_RIGHT
+                                        distBL -> ViewfinderHandle.BOTTOM_LEFT
+                                        else -> ViewfinderHandle.BOTTOM_RIGHT
+                                    }
+                                }
+                                currentRect.contains(startOffset) -> ViewfinderHandle.BODY
                                 else -> ViewfinderHandle.NONE
                             }
                         },
                         onDrag = { change, dragAmount ->
                             if (activeHandle != ViewfinderHandle.NONE) {
                                 change.consume()
-                                when (activeHandle) {
+                                val cur = cropRectState.value
+                                val updated = when (activeHandle) {
                                     ViewfinderHandle.TOP_LEFT -> {
-                                        val newL = (cropRect.left + dragAmount.x).coerceIn(boundMinX, cropRect.right - minWidthPx)
-                                        val newT = (cropRect.top + dragAmount.y).coerceIn(boundMinY, cropRect.bottom - minHeightPx)
-                                        onCropRectChange(Rect(newL, newT, cropRect.right, cropRect.bottom))
+                                        val newL = (cur.left + dragAmount.x).coerceIn(currentBoundMinX, cur.right - currentMinWidthPx)
+                                        val newT = (cur.top + dragAmount.y).coerceIn(currentBoundMinY, cur.bottom - currentMinHeightPx)
+                                        Rect(newL, newT, cur.right, cur.bottom)
                                     }
                                     ViewfinderHandle.TOP_RIGHT -> {
-                                        val newR = (cropRect.right + dragAmount.x).coerceIn(cropRect.left + minWidthPx, boundMaxX)
-                                        val newT = (cropRect.top + dragAmount.y).coerceIn(boundMinY, cropRect.bottom - minHeightPx)
-                                        onCropRectChange(Rect(cropRect.left, newT, newR, cropRect.bottom))
+                                        val newR = (cur.right + dragAmount.x).coerceIn(cur.left + currentMinWidthPx, currentBoundMaxX)
+                                        val newT = (cur.top + dragAmount.y).coerceIn(currentBoundMinY, cur.bottom - currentMinHeightPx)
+                                        Rect(cur.left, newT, newR, cur.bottom)
                                     }
                                     ViewfinderHandle.BOTTOM_LEFT -> {
-                                        val newL = (cropRect.left + dragAmount.x).coerceIn(boundMinX, cropRect.right - minWidthPx)
-                                        val newB = (cropRect.bottom + dragAmount.y).coerceIn(cropRect.top + minHeightPx, boundMaxY)
-                                        onCropRectChange(Rect(newL, cropRect.top, cropRect.right, newB))
+                                        val newL = (cur.left + dragAmount.x).coerceIn(currentBoundMinX, cur.right - currentMinWidthPx)
+                                        val newB = (cur.bottom + dragAmount.y).coerceIn(cur.top + currentMinHeightPx, currentBoundMaxY)
+                                        Rect(newL, cur.top, cur.right, newB)
                                     }
                                     ViewfinderHandle.BOTTOM_RIGHT -> {
-                                        val newR = (cropRect.right + dragAmount.x).coerceIn(cropRect.left + minWidthPx, boundMaxX)
-                                        val newB = (cropRect.bottom + dragAmount.y).coerceIn(cropRect.top + minHeightPx, boundMaxY)
-                                        onCropRectChange(Rect(cropRect.left, cropRect.top, newR, newB))
+                                        val newR = (cur.right + dragAmount.x).coerceIn(cur.left + currentMinWidthPx, currentBoundMaxX)
+                                        val newB = (cur.bottom + dragAmount.y).coerceIn(cur.top + currentMinHeightPx, currentBoundMaxY)
+                                        Rect(cur.left, cur.top, newR, newB)
                                     }
                                     ViewfinderHandle.BODY -> {
-                                        val dx = dragAmount.x.coerceIn(boundMinX - cropRect.left, boundMaxX - cropRect.right)
-                                        val dy = dragAmount.y.coerceIn(boundMinY - cropRect.top, boundMaxY - cropRect.bottom)
-                                        onCropRectChange(cropRect.translate(dx, dy))
+                                        val dx = dragAmount.x.coerceIn(currentBoundMinX - cur.left, currentBoundMaxX - cur.right)
+                                        val dy = dragAmount.y.coerceIn(currentBoundMinY - cur.top, currentBoundMaxY - cur.bottom)
+                                        cur.translate(dx, dy)
                                     }
-                                    ViewfinderHandle.NONE -> {}
+                                    ViewfinderHandle.NONE -> cur
                                 }
+                                cropRectState.value = updated
+                                currentOnCropRectChange?.invoke(updated)
                             }
                         },
                         onDragEnd = { activeHandle = ViewfinderHandle.NONE },
@@ -277,82 +341,109 @@ fun InteractiveViewfinderOverlay(
                     )
                 }
         ) {
+            // Strictly read crop coordinates inside the Draw phase: zero recompositions during drag!
+            val rect = cropRectState.value
+            if (rect == Rect.Zero || rect.width <= 0f || rect.height <= 0f) return@Canvas
+
             // 1. Semi-transparent dark overlay covering entire camera area
             drawRect(color = dimColor)
-
-            val cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
 
             // 2. Punch clear transparent cutout
             drawRoundRect(
                 color = Color.Transparent,
-                topLeft = cropRect.topLeft,
-                size = cropRect.size,
+                topLeft = rect.topLeft,
+                size = rect.size,
                 cornerRadius = cornerRadius,
                 blendMode = BlendMode.Clear
             )
 
             // 3. Crisp white bounding border
             drawRoundRect(
-                color = strokeColor.copy(alpha = 0.85f),
-                topLeft = cropRect.topLeft,
-                size = cropRect.size,
+                color = borderStrokeColor,
+                topLeft = rect.topLeft,
+                size = rect.size,
                 cornerRadius = cornerRadius,
-                style = Stroke(width = 2.dp.toPx())
+                style = borderStroke
             )
 
             // 4. Photomath-style L-bracket corner guides
-            val cornerLen = 22.dp.toPx()
-            val cornerStroke = 3.5.dp.toPx()
-
             // Top-Left
-            drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left + cornerLen, cropRect.top), cornerStroke, StrokeCap.Round)
-            drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left, cropRect.top + cornerLen), cornerStroke, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.left, rect.top), Offset(rect.left + cornerLen, rect.top), cornerStrokeWidth, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.left, rect.top), Offset(rect.left, rect.top + cornerLen), cornerStrokeWidth, StrokeCap.Round)
 
             // Top-Right
-            drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right - cornerLen, cropRect.top), cornerStroke, StrokeCap.Round)
-            drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right, cropRect.top + cornerLen), cornerStroke, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.right, rect.top), Offset(rect.right - cornerLen, rect.top), cornerStrokeWidth, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.right, rect.top), Offset(rect.right, rect.top + cornerLen), cornerStrokeWidth, StrokeCap.Round)
 
             // Bottom-Left
-            drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left + cornerLen, cropRect.bottom), cornerStroke, StrokeCap.Round)
-            drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left, cropRect.bottom - cornerLen), cornerStroke, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.left, rect.bottom), Offset(rect.left + cornerLen, rect.bottom), cornerStrokeWidth, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.left, rect.bottom), Offset(rect.left, rect.bottom - cornerLen), cornerStrokeWidth, StrokeCap.Round)
 
             // Bottom-Right
-            drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right - cornerLen, cropRect.bottom), cornerStroke, StrokeCap.Round)
-            drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right, cropRect.bottom - cornerLen), cornerStroke, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.right, rect.bottom), Offset(rect.right - cornerLen, rect.bottom), cornerStrokeWidth, StrokeCap.Round)
+            drawLine(Color.White, Offset(rect.right, rect.bottom), Offset(rect.right, rect.bottom - cornerLen), cornerStrokeWidth, StrokeCap.Round)
 
-            // 5. Visual Corner Dots/Handles
-            val dotRadius = 4.5.dp.toPx()
-            val dotBorderRadius = 7.dp.toPx()
-            val cornerPoints = listOf(
-                Offset(cropRect.left, cropRect.top),
-                Offset(cropRect.right, cropRect.top),
-                Offset(cropRect.left, cropRect.bottom),
-                Offset(cropRect.right, cropRect.bottom)
-            )
-            cornerPoints.forEach { pt ->
-                drawCircle(Color.White, radius = dotBorderRadius, center = pt)
-                drawCircle(PrimaryBlue, radius = dotRadius, center = pt)
-            }
+            // 5. Visual Corner Dots/Handles (drawn directly without list allocation)
+            drawCircle(Color.White, radius = dotBorderRadius, center = Offset(rect.left, rect.top))
+            drawCircle(PrimaryBlue, radius = dotRadius, center = Offset(rect.left, rect.top))
+
+            drawCircle(Color.White, radius = dotBorderRadius, center = Offset(rect.right, rect.top))
+            drawCircle(PrimaryBlue, radius = dotRadius, center = Offset(rect.right, rect.top))
+
+            drawCircle(Color.White, radius = dotBorderRadius, center = Offset(rect.left, rect.bottom))
+            drawCircle(PrimaryBlue, radius = dotRadius, center = Offset(rect.left, rect.bottom))
+
+            drawCircle(Color.White, radius = dotBorderRadius, center = Offset(rect.right, rect.bottom))
+            drawCircle(PrimaryBlue, radius = dotRadius, center = Offset(rect.right, rect.bottom))
         }
 
-        // Floating guidance pill above the resizable frame
-        val hintY = (cropRect.top - with(density) { 34.dp.toPx() }).toInt().coerceAtLeast(with(density) { 72.dp.toPx() }.toInt())
+        // Floating guidance pill pinned nicely below top bar
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = Color.Black.copy(alpha = 0.65f),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset { IntOffset(0, hintY) }
+                .padding(top = 76.dp)
         ) {
             Text(
                 text = "Drag 4 corners to frame the question or problem",
                 color = Color.White,
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
             )
         }
     }
+}
+
+/**
+ * Backwards-compatible wrapper delegating to [InteractiveCropOverlay].
+ */
+@Deprecated(
+    message = "Use InteractiveCropOverlay for isolated recomposition and performance",
+    replaceWith = ReplaceWith("InteractiveCropOverlay(cropRectState, modifier, minWidth, minHeight, dimColor, strokeColor)")
+)
+@Composable
+fun InteractiveViewfinderOverlay(
+    cropRect: Rect,
+    onCropRectChange: (Rect) -> Unit,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = 80.dp,
+    minHeight: Dp = 80.dp,
+    dimColor: Color = Color.Black.copy(alpha = 0.6f),
+    strokeColor: Color = Color.White
+) {
+    val state = remember { mutableStateOf(cropRect) }
+    LaunchedEffect(cropRect) { state.value = cropRect }
+    InteractiveCropOverlay(
+        cropRectState = state,
+        modifier = modifier,
+        minWidth = minWidth,
+        minHeight = minHeight,
+        dimColor = dimColor,
+        strokeColor = strokeColor,
+        onCropRectChange = onCropRectChange
+    )
 }
 
 /**
@@ -669,132 +760,148 @@ fun CameraScannerScreen(
         }
     }
 
-    BoxWithConstraints(
+    // Viewport dimensions for accurate FILL_CENTER image cropping
+    var cameraViewportWidth by remember { mutableStateOf(0) }
+    var cameraViewportHeight by remember { mutableStateOf(0) }
+
+    // Dynamic, resizable crop frame state (read in Draw phase and capture callback only)
+    val cropRectState = remember { mutableStateOf(Rect.Zero) }
+
+    // Shared function: captures photo, crops it to the viewfinder frame, evaluates prompt, and dispatches to AI
+    fun performCaptureAndSend() {
+        if (isCapturing || uiState.isLoading) return
+        isCapturing = true
+
+        val currentCropRect = cropRectState.value
+        val vWidth = if (cameraViewportWidth > 0) cameraViewportWidth else 1080
+        val vHeight = if (cameraViewportHeight > 0) cameraViewportHeight else 1920
+
+        val effectiveCropRect = if (currentCropRect != Rect.Zero && currentCropRect.width > 0f && currentCropRect.height > 0f) {
+            currentCropRect
+        } else {
+            val initW = vWidth * 0.82f
+            val initH = 200f * context.resources.displayMetrics.density
+            val initL = (vWidth - initW) / 2f
+            val initT = (vHeight - initH) / 2f
+            Rect(initL, initT, initL + initW, initT + initH)
+        }
+
+        takePhotoAndCrop(
+            context = context,
+            imageCapture = imageCapture,
+            cropRect = effectiveCropRect,
+            previewWidth = vWidth,
+            previewHeight = vHeight,
+            onSuccess = { croppedUri ->
+                isCapturing = false
+                // Dynamic prompt building in ViewModel using selectedSubject and selectedFormat
+                chatViewModel.sendImagePrompt(context, croppedUri)
+            },
+            onError = { exc ->
+                isCapturing = false
+                Log.e("CameraScannerScreen", "Capture or crop error", exc)
+            }
+        )
+    }
+
+    // Listen for capture requests from external triggers (e.g. MainScreen center Send FAB)
+    LaunchedEffect(Unit) {
+        chatViewModel.captureTrigger.collect {
+            if (hasCameraPermission && !isCapturing && !uiState.isLoading) {
+                performCaptureAndSend()
+            }
+        }
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF1E1E1E))
             .navigationBarsPadding()
             .imePadding()
     ) {
-        val totalWidth = constraints.maxWidth.toFloat()
-        val totalHeight = constraints.maxHeight.toFloat()
-        val density = LocalDensity.current
-
-        // Dynamic, resizable crop frame state
-        var cropRect by remember(totalWidth, totalHeight) {
-            val initW = totalWidth * 0.82f
-            val initH = with(density) { 200.dp.toPx() }
-            val initL = (totalWidth - initW) / 2f
-            val initT = (totalHeight - initH) / 2f - with(density) { 50.dp.toPx() }
-            mutableStateOf(Rect(initL, initT, initL + initW, initT + initH))
-        }
-
-        // Shared function: captures photo, crops it to the viewfinder frame, evaluates prompt, and dispatches to AI
-        fun performCaptureAndSend() {
-            if (isCapturing || uiState.isLoading) return
-            isCapturing = true
-
-            takePhotoAndCrop(
-                context = context,
-                imageCapture = imageCapture,
-                cropRect = cropRect,
-                previewWidth = totalWidth.toInt(),
-                previewHeight = totalHeight.toInt(),
-                onSuccess = { croppedUri ->
-                    isCapturing = false
-                    // Dynamic prompt building in ViewModel using selectedSubject and selectedFormat
-                    chatViewModel.sendImagePrompt(context, croppedUri)
-                },
-                onError = { exc ->
-                    isCapturing = false
-                    Log.e("CameraScannerScreen", "Capture or crop error", exc)
-                }
-            )
-        }
-
-        // Listen for capture requests from external triggers (e.g. MainScreen center Send FAB)
-        LaunchedEffect(Unit) {
-            chatViewModel.captureTrigger.collect {
-                if (hasCameraPermission && !isCapturing && !uiState.isLoading) {
-                    performCaptureAndSend()
-                }
-            }
-        }
-
-        // ── 1. Live Camera Preview or Permission Rationale ─────────────────
-        if (hasCameraPermission) {
-            CameraPreview(
-                imageCapture = imageCapture,
-                modifier = Modifier.fillMaxSize(),
-                onCameraBound = { camera -> cameraControl = camera.cameraControl }
-            )
-
-            // ── 2. Interactive Resizable Viewfinder Overlay ─────────────────
-            if (uiState.messages.isEmpty()) {
-                InteractiveViewfinderOverlay(
-                    cropRect = cropRect,
-                    onCropRectChange = { cropRect = it },
-                    modifier = Modifier.fillMaxSize(),
-                    dimColor = Color.Black.copy(alpha = 0.6f)
-                )
-            }
-        } else {
-            CameraPermissionRationale(
-                onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-
-        // ── Top Bar ────────────────────────────────────────────────────────
-        Row(
+        // ── 1. Live Camera Preview + Crop Overlay Viewport (Occupies all space strictly above bottom panel) ──
+        Box(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .padding(top = 16.dp, start = 8.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = {
-                    chatViewModel.resetContextFilters()
-                    chatViewModel.startNewChat()
-                    onBackClick()
+                .onSizeChanged { size ->
+                    cameraViewportWidth = size.width
+                    cameraViewportHeight = size.height
                 }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
+        ) {
+            if (hasCameraPermission) {
+                CameraPreview(
+                    imageCapture = imageCapture,
+                    modifier = Modifier.fillMaxSize(),
+                    onCameraBound = { camera -> cameraControl = camera.cameraControl }
+                )
+
+                // Interactive Crop Overlay sits strictly above the bottom panel
+                if (uiState.messages.isEmpty()) {
+                    InteractiveCropOverlay(
+                        cropRectState = cropRectState,
+                        modifier = Modifier.fillMaxSize(),
+                        minWidth = 80.dp,
+                        minHeight = 80.dp
+                    )
+                }
+            } else {
+                CameraPermissionRationale(
+                    onRequestPermission = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                    modifier = Modifier.fillMaxSize()
                 )
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Ask AI", style = MaterialTheme.typography.titleLarge, color = Color.White)
-            Spacer(modifier = Modifier.weight(1f))
 
-            if (hasCameraPermission && cameraControl != null) {
+            // Top Bar: Floating above the camera viewport
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp, start = 8.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 IconButton(
                     onClick = {
-                        val nextTorchState = !isTorchOn
-                        cameraControl?.enableTorch(nextTorchState)
-                        isTorchOn = nextTorchState
+                        chatViewModel.resetContextFilters()
+                        chatViewModel.startNewChat()
+                        onBackClick()
                     }
                 ) {
                     Icon(
-                        imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                        contentDescription = "Toggle Torch",
-                        tint = if (isTorchOn) Color(0xFFFFD700) else Color.White
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
                     )
                 }
-            }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Ask AI", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Spacer(modifier = Modifier.weight(1f))
 
-            IconButton(onClick = { chatViewModel.startNewChat() }) {
-                Icon(imageVector = Icons.Default.Edit, contentDescription = "New Chat", tint = Color.White)
+                if (hasCameraPermission && cameraControl != null) {
+                    IconButton(
+                        onClick = {
+                            val nextTorchState = !isTorchOn
+                            cameraControl?.enableTorch(nextTorchState)
+                            isTorchOn = nextTorchState
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                            contentDescription = "Toggle Torch",
+                            tint = if (isTorchOn) Color(0xFFFFD700) else Color.White
+                        )
+                    }
+                }
+
+                IconButton(onClick = { chatViewModel.startNewChat() }) {
+                    Icon(imageVector = Icons.Default.Edit, contentDescription = "New Chat", tint = Color.White)
+                }
             }
         }
 
-        // ── Persistent Bottom Sheet ────────────────────────────────────────
+        // ── 2. Persistent Bottom Panel (Sits strictly below the Camera Viewport) ──
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = Color(0xFF1E1E22),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))

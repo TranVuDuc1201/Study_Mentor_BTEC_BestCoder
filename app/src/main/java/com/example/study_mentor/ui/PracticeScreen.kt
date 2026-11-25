@@ -195,6 +195,52 @@ fun PracticeScreen(
                 }
             }
 
+            // 2.5 Generation Error Banner (Clean retry banner on main Practice screen)
+            val generationError = (uiState.generationStatus as? QuizGenerationStatus.Error)?.message
+                ?: uiState.errorMessage
+            if (!generationError.isNullOrBlank() && !isGenerating) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(
+                                    text = "⚠️ Generation Failed",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Color(0xFFB91C1C)
+                                )
+                                Text(
+                                    text = generationError,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF7F1D1D)
+                                )
+                            }
+                            Button(
+                                onClick = {
+                                    showBottomSheet = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Retry", fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+                }
+            }
+
             // 3. AI Custom Quiz Generator Card (Prominent Banner with Gradient and Sparkles)
             item {
                 AiQuizGeneratorCard(
@@ -362,6 +408,7 @@ fun PracticeScreen(
                 onDismiss = {
                     coroutineScope.launch {
                         sheetState.hide()
+                    }.invokeOnCompletion {
                         viewModel.resetGenerationStatus()
                         showBottomSheet = false
                     }
@@ -372,14 +419,13 @@ fun PracticeScreen(
                         count = count,
                         type = type,
                         language = language,
-                        showInstantFeedback = showInstantFeedback,
-                        onSuccess = {
-                            coroutineScope.launch {
-                                sheetState.hide()
-                                showBottomSheet = false
-                            }
-                        }
+                        showInstantFeedback = showInstantFeedback
                     )
+                    coroutineScope.launch {
+                        sheetState.hide()
+                    }.invokeOnCompletion {
+                        showBottomSheet = false
+                    }
                 }
             )
         }

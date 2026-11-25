@@ -204,7 +204,7 @@ class QuizRepositoryImpl(
             firestore.collection("CustomQuizzes").document()
         }
         val toSave = if (quiz.id.isBlank()) quiz.copy(id = docRef.id) else quiz
-        docRef.set(toSave).await()
+        docRef.set(toSave.toMap()).await()
     }
 
     override fun getUserCustomQuizzes(userId: String): Flow<List<Quiz>> = callbackFlow {
@@ -317,48 +317,48 @@ class QuizRepositoryImpl(
     }
 
     private fun documentToQuiz(doc: DocumentSnapshot): Quiz? {
-        return try {
-            doc.toObject(Quiz::class.java)?.copy(id = doc.id)
-        } catch (e: Exception) {
-            val data = doc.data ?: return null
-            val id = doc.id
-            val title = data["title"] as? String ?: ""
-            val description = data["description"] as? String ?: ""
-            val maxXp = (data["maxXp"] as? Number)?.toInt() ?: 100
-            val isAiGenerated = data["isAiGenerated"] as? Boolean ?: true
-            val creatorId = data["creatorId"] as? String
-            val showInstantFeedback = data["showInstantFeedback"] as? Boolean ?: true
-            val questionsRaw = data["questions"] as? List<*> ?: emptyList<Any>()
-            val questions = questionsRaw.mapNotNull { item ->
-                val qMap = item as? Map<*, *> ?: return@mapNotNull null
-                val qId = qMap["id"] as? String ?: ""
-                val qText = qMap["text"] as? String ?: ""
-                val qTypeStr = qMap["type"] as? String ?: "MULTIPLE_CHOICE"
-                val qType = if (qTypeStr.contains("SHORT", ignoreCase = true)) {
-                    QuestionType.SHORT_ANSWER
-                } else {
-                    QuestionType.MULTIPLE_CHOICE
-                }
-                val qOptions = (qMap["options"] as? List<*>)?.mapNotNull { it as? String }
-                val qCorrectAnswer = qMap["correctAnswer"] as? String ?: ""
-                Question(
-                    id = qId,
-                    text = qText,
-                    type = qType,
-                    options = qOptions,
-                    correctAnswer = qCorrectAnswer
-                )
+        val data = doc.data ?: return null
+        val id = doc.id
+        val title = data["title"] as? String ?: ""
+        val description = data["description"] as? String ?: ""
+        val maxXp = (data["maxXp"] as? Number)?.toInt() ?: 100
+        val isAiGenerated = data["isAiGenerated"] as? Boolean ?: (data["aiGenerated"] as? Boolean) ?: true
+        val creatorId = data["creatorId"] as? String
+        val showInstantFeedback = data["showInstantFeedback"] as? Boolean
+            ?: (data["instantFeedback"] as? Boolean)
+            ?: true
+        val questionsRaw = data["questions"] as? List<*> ?: emptyList<Any>()
+        val questions = questionsRaw.mapNotNull { item ->
+            val qMap = item as? Map<*, *> ?: return@mapNotNull null
+            val qId = qMap["id"] as? String ?: ""
+            val qText = qMap["text"] as? String ?: ""
+            val qTypeStr = qMap["type"] as? String ?: "MULTIPLE_CHOICE"
+            val qType = if (qTypeStr.contains("SHORT", ignoreCase = true)) {
+                QuestionType.SHORT_ANSWER
+            } else {
+                QuestionType.MULTIPLE_CHOICE
             }
-            Quiz(
-                id = id,
-                title = title,
-                description = description,
-                maxXp = maxXp,
-                questions = questions,
-                isAiGenerated = isAiGenerated,
-                creatorId = creatorId,
-                showInstantFeedback = showInstantFeedback
+            val qOptions = (qMap["options"] as? List<*>)?.mapNotNull { it as? String }
+            val qCorrectAnswer = qMap["correctAnswer"] as? String ?: ""
+            val qExplanation = qMap["explanation"] as? String ?: ""
+            Question(
+                id = qId,
+                text = qText,
+                type = qType,
+                options = qOptions,
+                correctAnswer = qCorrectAnswer,
+                explanation = qExplanation
             )
         }
+        return Quiz(
+            id = id,
+            title = title,
+            description = description,
+            maxXp = maxXp,
+            questions = questions,
+            isAiGenerated = isAiGenerated,
+            creatorId = creatorId,
+            showInstantFeedback = showInstantFeedback
+        )
     }
 }

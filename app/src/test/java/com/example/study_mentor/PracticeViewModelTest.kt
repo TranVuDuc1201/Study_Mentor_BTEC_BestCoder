@@ -6,6 +6,7 @@ import com.example.study_mentor.data.QuestionType
 import com.example.study_mentor.data.Quiz
 import com.example.study_mentor.data.QuizRepository
 import com.example.study_mentor.data.calculateEarnedXp
+import com.example.study_mentor.data.toMap
 import com.example.study_mentor.ui.PracticeViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -174,5 +175,87 @@ class PracticeViewModelTest {
         assertFalse(viewModel.uiState.value.isGeneratingQuiz)
         assertTrue(viewModel.quizzes.value.any { it.id == "ai_gen_999" })
         coVerify { quizRepository.saveCustomQuiz(any()) }
+    }
+
+    @Test
+    fun testGenerateCustomQuiz_ShowInstantFeedbackFalse_PersistsCorrectly() = runTest(testDispatcher) {
+        val mockJsonResponse = """
+            {
+              "title": "Quantum Mechanics Exam",
+              "description": "Exam mode without instant feedback",
+              "questions": [
+                {
+                  "question": "What is the speed of light?",
+                  "options": ["3e8 m/s", "3e6 m/s", "3e10 m/s", "3e5 m/s"],
+                  "correctIndex": 0,
+                  "correctAnswer": "3e8 m/s",
+                  "explanation": "Fundamental physical constant"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val mockQuizWithNoInstantFeedback = Quiz(
+            id = "ai_gen_no_feedback",
+            title = "Quantum Mechanics Exam",
+            description = "Exam mode without instant feedback",
+            maxXp = 100,
+            questions = listOf(
+                Question(
+                    id = "q_1",
+                    text = "What is the speed of light?",
+                    type = QuestionType.MULTIPLE_CHOICE,
+                    options = listOf("3e8 m/s", "3e6 m/s", "3e10 m/s", "3e5 m/s"),
+                    correctAnswer = "3e8 m/s",
+                    explanation = "Fundamental physical constant"
+                )
+            ),
+            isAiGenerated = true,
+            showInstantFeedback = false
+        )
+
+        coEvery {
+            aiServiceClient.askQuestion(any(), any(), any(), any(), any(), any())
+        } returns flowOf(mockJsonResponse)
+
+        every {
+            quizRepository.parseStructuredQuizJson(
+                rawJson = any(),
+                fallbackTopic = any(),
+                count = any(),
+                type = any(),
+                language = any(),
+                creatorId = any(),
+                showInstantFeedback = false
+            )
+        } returns Result.success(mockQuizWithNoInstantFeedback)
+
+        var resultQuiz: Quiz? = null
+        viewModel.generateCustomQuiz(
+            topic = "Quantum Mechanics Exam",
+            count = 5,
+            showInstantFeedback = false,
+            onSuccess = { resultQuiz = it }
+        )
+
+        advanceUntilIdle()
+
+        assertNotNull(resultQuiz)
+        assertFalse("showInstantFeedback should be false on generated Quiz", resultQuiz!!.showInstantFeedback)
+        val storedQuiz = viewModel.quizzes.value.find { it.id == "ai_gen_no_feedback" }
+        assertNotNull(storedQuiz)
+        assertFalse("showInstantFeedback should be false in ViewModel state", storedQuiz!!.showInstantFeedback)
+        coVerify { quizRepository.saveCustomQuiz(match { !it.showInstantFeedback }) }
+    }
+
+    @Test
+    fun testQuizToMap_PreservesShowInstantFeedbackFalse() {
+        val quiz = Quiz(
+            id = "quiz_test_map",
+            title = "Test Serialization",
+            showInstantFeedback = false
+        )
+        val map = quiz.toMap()
+        assertEquals(false, map["showInstantFeedback"])
     }
 }

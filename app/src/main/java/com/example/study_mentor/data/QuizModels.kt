@@ -105,3 +105,30 @@ fun calculateEarnedXp(correctAnswers: Int, totalQuestions: Int, maxXp: Int): Int
 
     return (baseEarned + masteryBonus).roundToInt()
 }
+
+/**
+ * Serializes a [Question] instance to a Firestore-compatible Map representation.
+ */
+fun Question.toMap(): Map<String, Any?> = mapOf(
+    "id" to id,
+    "text" to text,
+    "type" to type.name,
+    "options" to options,
+    "correctAnswer" to correctAnswer,
+    "explanation" to explanation
+)
+
+/**
+ * Serializes a [Quiz] instance to a Firestore-compatible Map representation,
+ * explicitly preserving [showInstantFeedback] and all metadata fields.
+ */
+fun Quiz.toMap(): Map<String, Any?> = mapOf(
+    "id" to id,
+    "title" to title,
+    "description" to description,
+    "maxXp" to maxXp,
+    "questions" to questions.map { it.toMap() },
+    "isAiGenerated" to isAiGenerated,
+    "creatorId" to creatorId,
+    "showInstantFeedback" to showInstantFeedback
+)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -38,10 +42,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -70,6 +76,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.study_mentor.R
 import com.example.study_mentor.data.Question
@@ -211,6 +218,7 @@ private fun QuizActiveSession(
     // Completion Dialog State
     var showCompletionDialog by remember { mutableStateOf(false) }
     var earnedXpResult by remember { mutableIntStateOf(0) }
+    var isReviewing by remember { mutableStateOf(false) }
 
     val totalQuestions = quiz.questions.size
     val currentQuestion = quiz.questions.getOrNull(currentQuestionIndex) ?: return
@@ -227,13 +235,20 @@ private fun QuizActiveSession(
         QuestionType.SHORT_ANSWER -> shortAnswerText.trim().isNotBlank()
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
+    if (isReviewing) {
+        QuizReviewView(
+            quiz = quiz,
+            userAnswers = userAnswers,
+            onNavigateBack = onNavigateBack
+        )
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
         // ── Top Header & Navigation ──────────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -481,12 +496,21 @@ private fun QuizActiveSession(
                                     tint = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828),
                                     modifier = Modifier.size(18.dp)
                                 )
-                                Text(
-                                    text = if (isUserCorrect) "Correct! Well done." else "Incorrect. The correct answer is: ${currentQuestion.correctAnswer}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
-                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        text = if (isUserCorrect) "Correct! Well done." else "Incorrect. The correct answer is: ${currentQuestion.correctAnswer}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                    )
+                                    if (currentQuestion.explanation.isNotBlank()) {
+                                        Text(
+                                            text = currentQuestion.explanation,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isUserCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -667,25 +691,362 @@ private fun QuizActiveSession(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        showCompletionDialog = false
-                        onNavigateBack()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Return to Practice",
-                        fontWeight = FontWeight.Bold
-                    )
+                    OutlinedButton(
+                        onClick = {
+                            showCompletionDialog = false
+                            isReviewing = true
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Review Answers",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            showCompletionDialog = false
+                            onNavigateBack()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = MaterialTheme.shapes.medium,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Return to Practice",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             containerColor = Color.White,
             shape = MaterialTheme.shapes.extraLarge
         )
+    }
+    }
+}
+
+/**
+ * Full-screen Answer Review View allowing users to scroll through all quiz questions,
+ * inspect their own submitted answers, view the correct answers for any missed questions,
+ * and read pedagogical explanations.
+ */
+@Composable
+fun QuizReviewView(
+    quiz: Quiz,
+    userAnswers: Map<Int, String>,
+    onNavigateBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val totalQuestions = quiz.questions.size
+    val correctCount = quiz.questions.indices.count { idx ->
+        val q = quiz.questions[idx]
+        val ans = userAnswers[idx].orEmpty().trim()
+        ans.equals(q.correctAnswer.trim(), ignoreCase = true)
+    }
+
+    Scaffold(
+        containerColor = BackgroundOffWhite,
+        topBar = {
+            Surface(
+                color = Color.White,
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Return to Practice",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Answer Review",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = quiz.title,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            maxLines = 1
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFE8F5E9),
+                        border = BorderStroke(1.dp, Color(0xFFA5D6A7)),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(
+                            text = "$correctCount / $totalQuestions Correct",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        },
+        bottomBar = {
+            Surface(
+                color = Color.White,
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                ) {
+                    Button(
+                        onClick = onNavigateBack,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF9800), // Primary soft-orange
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Return to Practice",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            itemsIndexed(quiz.questions) { index, question ->
+                val userAnswer = userAnswers[index]?.trim()
+                val isCorrect = !userAnswer.isNullOrBlank() &&
+                    userAnswer.equals(question.correctAnswer.trim(), ignoreCase = true)
+
+                ElevatedCard(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Header Row: Question Number + Status pill/badge
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Question ${index + 1}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = when (question.type) {
+                                        QuestionType.MULTIPLE_CHOICE -> Color(0xFFEEF2FF)
+                                        QuestionType.SHORT_ANSWER -> Color(0xFFFEF3C7)
+                                    }
+                                ) {
+                                    Text(
+                                        text = when (question.type) {
+                                            QuestionType.MULTIPLE_CHOICE -> "MCQ"
+                                            QuestionType.SHORT_ANSWER -> "Short Answer"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = when (question.type) {
+                                            QuestionType.MULTIPLE_CHOICE -> PrimaryBlue
+                                            QuestionType.SHORT_ANSWER -> Color(0xFFD97706)
+                                        },
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Status Badge: Correct / Incorrect
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isCorrect) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                                border = BorderStroke(1.dp, if (isCorrect) Color(0xFF4CAF50) else Color(0xFFF44336))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isCorrect) Icons.Default.Check else Icons.Default.Close,
+                                        contentDescription = null,
+                                        tint = if (isCorrect) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (isCorrect) "Correct" else "Incorrect",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCorrect) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Question Text
+                        Text(
+                            text = question.text,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // Your Answer Row
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isCorrect) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isCorrect) Color(0xFFBBF7D0) else Color(0xFFFECACA)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Your Answer: ",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.DarkGray
+                                )
+                                Text(
+                                    text = if (userAnswer.isNullOrBlank()) "Not answered" else userAnswer,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCorrect) Color(0xFF15803D) else Color(0xFFB91C1C)
+                                )
+                            }
+                        }
+
+                        // Correct Answer Row (Displayed clearly if user was incorrect/unanswered)
+                        if (!isCorrect) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF15803D),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "Correct Answer: ${question.correctAnswer}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF15803D)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Explanation (if available) in a soft tinted box labeled "Explanation"
+                        if (question.explanation.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFFFF7ED), // Soft warm amber/orange tint
+                                border = BorderStroke(1.dp, Color(0xFFFFEDD5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color(0xFFEA580C),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Explanation",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFEA580C)
+                                        )
+                                    }
+                                    Text(
+                                        text = question.explanation,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF9A3412)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
